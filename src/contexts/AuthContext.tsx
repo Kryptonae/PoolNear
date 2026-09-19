@@ -49,8 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Derive phone verification from Supabase Auth's authoritative state
-  const phoneVerified = !!user?.phone_confirmed_at;
+  // Phone verification is now basic profile validation (OTP removed)
+  const phoneVerified = !!profile?.phone && /^[6-9][0-9]{9}$/.test(profile.phone);
 
   // Fetch profile from Supabase
   async function fetchProfile(userId: string) {
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data as Profile | null;
   }
 
-  // Refresh user from Supabase Auth (e.g., after phone verification)
+  // Refresh user from Supabase Auth (e.g., after auth state change)
   async function refreshUser() {
     const { data: { user: freshUser } } = await supabase.auth.getUser();
     if (freshUser) {

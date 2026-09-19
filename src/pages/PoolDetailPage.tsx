@@ -15,6 +15,7 @@ import {
   type Pool, type PoolMember, type PoolOrder,
 } from '../services/pools';
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
+import { supabase } from '../lib/supabase';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState } from '../components/ui';
 import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
 import { type PoolStatusKey } from '../lib/constants';
@@ -28,7 +29,7 @@ import toast from 'react-hot-toast';
 
 export function PoolDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { profile, phoneVerified, refreshUser } = useAuth();
+  const { profile, phoneVerified, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const [pool, setPool] = useState<Pool | null>(null);
@@ -81,9 +82,65 @@ export function PoolDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, profile?.id]);
+
+  // Silent background refetch (no loading spinner)
+  const refetchSilent = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [poolData, membersData, orderData] = await Promise.all([
+        getPoolById(id),
+        getPoolMembers(id),
+        getPoolOrder(id),
+      ]);
+      setPool(poolData);
+      setMembers(membersData);
+      setOrder(orderData);
+      
+      if (profile?.id) {
+        const connectionsData = await getPoolConnections(id, profile.id);
+        setConnections(connectionsData);
+      }
+    } catch {
+      // Silent fail for background refresh
+    }
+  }, [id, profile?.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ─── REALTIME SUBSCRIPTIONS ───────────────────────────────────
+  // Subscribe to pools, pool_members, and orders changes for this pool
+  // so both users see live updates without manual refresh.
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase.channel(`pool-detail:${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pools', filter: `id=eq.${id}` },
+        () => { refetchSilent(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pool_members', filter: `pool_id=eq.${id}` },
+        () => { refetchSilent(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `pool_id=eq.${id}` },
+        () => { refetchSilent(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'connections', filter: `pool_id=eq.${id}` },
+        () => { refetchSilent(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, refetchSilent]);
 
   if (loading) return <LoadingState message="Loading pool details..." />;
   if (error || !pool) return <ErrorState message={error || 'Pool not found'} onRetry={fetchAll} />;
@@ -371,7 +428,7 @@ export function PoolDetailPage() {
                         if (!phoneVerified) {
                           return (
                             <button onClick={() => setShowPhoneModal(true)} className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full font-medium hover:bg-red-100 transition-colors">
-                              Verify Phone to Connect
+                              Add Phone to Connect
                             </button>
                           );
                         }
@@ -706,13 +763,13 @@ export function PoolDetailPage() {
         </div>
       </Modal>
 
-      {/* Phone Verification Modal */}
+      {/* Phone Number Modal */}
       <PhoneVerificationModal
         isOpen={showPhoneModal}
         onClose={() => setShowPhoneModal(false)}
         onVerified={() => {
-          refreshUser();
-          fetchAll();
+          refreshProfile();
+          refetchSilent();
         }}
       />
     </div>

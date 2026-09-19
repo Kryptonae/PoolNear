@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 
 export function ProfilePage() {
   const { id: viewUserId } = useParams<{ id: string }>();
-  const { profile: myProfile, user, phoneVerified, signOut, updateProfile, refreshProfile, refreshUser } = useAuth();
+  const { profile: myProfile, user, phoneVerified, signOut, updateProfile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const isOwnProfile = !viewUserId || viewUserId === user?.id;
@@ -197,23 +197,23 @@ export function ProfilePage() {
           Member since {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
 
-        {/* Phone Verification Status (own profile only) */}
+        {/* Phone Status (own profile only) */}
         {isOwnProfile && (
           <div className="mt-5 pt-4 border-t border-surface-100 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
               <Phone size={16} className="text-surface-400" />
-              <span className="font-medium text-surface-700">Phone Verification</span>
+              <span className="font-medium text-surface-700">Phone Number</span>
             </div>
             {phoneVerified ? (
               <span className="text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                <CheckCircle2 size={12} /> Verified
+                <CheckCircle2 size={12} /> Added
               </span>
             ) : (
               <button
                 onClick={() => setShowPhoneModal(true)}
                 className="text-xs bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full font-medium flex items-center gap-1 hover:bg-amber-100 transition-colors"
               >
-                <AlertTriangle size={12} /> Not verified — Verify now
+                <AlertTriangle size={12} /> Missing — Add now
               </button>
             )}
           </div>
@@ -330,11 +330,11 @@ export function ProfilePage() {
         {APP_NAME} trust scores are calculated from pool activity and cannot be manually edited.
       </p>
 
-      {/* Phone Verification Modal */}
+      {/* Phone Number Modal */}
       <PhoneVerificationModal
         isOpen={showPhoneModal}
         onClose={() => setShowPhoneModal(false)}
-        onVerified={() => refreshUser()}
+        onVerified={() => refreshProfile()}
       />
     </div>
   );

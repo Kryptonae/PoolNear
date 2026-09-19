@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
   getMyCreatedPools, getMyJoinedPools, getMyRequirements, cancelRequirement,
   type Pool, type Requirement,
@@ -59,6 +60,50 @@ export function DashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Silent background refetch (no loading spinner)
+  const refetchSilent = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const [reqs, created, joined] = await Promise.all([
+        getMyRequirements(profile.id),
+        getMyCreatedPools(profile.id),
+        getMyJoinedPools(profile.id),
+      ]);
+      setRequirements(reqs);
+      setCreatedPools(created);
+      setJoinedPools(joined);
+    } catch {
+      // Silent fail for background refresh
+    }
+  }, [profile?.id]);
+
+  // Realtime: auto-refresh dashboard when pools/members change
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const channel = supabase.channel(`dashboard:${profile.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pools' },
+        () => { refetchSilent(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pool_members' },
+        () => { refetchSilent(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'requirements', filter: `user_id=eq.${profile.id}` },
+        () => { refetchSilent(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id, refetchSilent]);
 
   const handleCancelRequirement = async (reqId: string, e: React.MouseEvent) => {
     e.stopPropagation();
