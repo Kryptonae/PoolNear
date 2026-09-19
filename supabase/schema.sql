@@ -300,116 +300,153 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- ─── PROFILES POLICIES ────────────────────────────────────────────
 
--- Anyone can view public profile info (limited columns via select in app)
-CREATE POLICY "Public profiles are viewable by everyone"
+-- Users can only directly select their own full profile
+CREATE POLICY "Users can view own profile"
   ON profiles FOR SELECT
-  USING (true);
+  TO authenticated
+  USING (auth.uid() = id);
 
 -- Users can update their own profile, but NOT is_admin, trust counters, or account_status
--- These fields are enforced via the update_profile_safe function below
-CREATE POLICY "Users can update own profile"
-  ON profiles FOR UPDATE
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
+-- Direct updates are disabled. All profile updates MUST go through the `update_profile_safe` RPC
+-- CREATE POLICY "Users can update own profile"
+--   ON profiles FOR UPDATE
+--   USING (auth.uid() = id)
+--   WITH CHECK (auth.uid() = id);
 
 -- Users can insert their own profile
-CREATE POLICY "Users can insert own profile"
-  ON profiles FOR INSERT
-  WITH CHECK (auth.uid() = id);
+-- (Handled automatically by handle_new_user trigger; direct client inserts disabled)
+-- CREATE POLICY "Users can insert own profile"
+--   ON profiles FOR INSERT
+--   WITH CHECK (auth.uid() = id);
 
 -- ─── POOLS POLICIES ───────────────────────────────────────────────
 
--- Active pools are viewable by all authenticated users
+-- Active pools are viewable by everyone, required for Discover page filters (ordering, delivered)
 CREATE POLICY "Authenticated users can view pools"
   ON pools FOR SELECT
   TO authenticated
   USING (true);
 
 -- Authenticated users can create pools
-CREATE POLICY "Authenticated users can create pools"
-  ON pools FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = creator_id);
+-- Direct client inserts disabled; handled via `create_pool_atomic` RPC
+-- CREATE POLICY "Authenticated users can create pools"
+--   ON pools FOR INSERT
+--   TO authenticated
+--   WITH CHECK (auth.uid() = creator_id);
 
 -- Pool updates: only by creator, orderer (for their specific transitions), or admin
-CREATE POLICY "Authorized users can update pool"
-  ON pools FOR UPDATE
-  TO authenticated
-  USING (
-    auth.uid() = creator_id
-    OR auth.uid() = orderer_id
-    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
-    OR EXISTS (SELECT 1 FROM pool_members WHERE pool_id = pools.id AND user_id = auth.uid())
-  );
+-- Direct updates are disabled. All transitions MUST go through secure RPCs (e.g. join_pool, volunteer_as_orderer)
+-- CREATE POLICY "Authorized users can update pool"
+--   ON pools FOR UPDATE
+--   TO authenticated
+--   USING (
+--     auth.uid() = creator_id
+--     OR auth.uid() = orderer_id
+--     OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+--     OR EXISTS (SELECT 1 FROM pool_members WHERE pool_id = pools.id AND user_id = auth.uid())
+--   );
 
 -- ─── REQUIREMENTS POLICIES ────────────────────────────────────────
 
+-- Users can view own requirements or requirements of pools they are in
 CREATE POLICY "Users can view all active requirements"
   ON requirements FOR SELECT
   TO authenticated
-  USING (true);
-
-CREATE POLICY "Users can create own requirements"
-  ON requirements FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own requirements"
-  ON requirements FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own requirements"
-  ON requirements FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- ─── POOL MEMBERS POLICIES ────────────────────────────────────────
-
-CREATE POLICY "Pool members visible to authenticated users"
-  ON pool_members FOR SELECT
-  TO authenticated
-  USING (true);
-
-CREATE POLICY "Users can join pools"
-  ON pool_members FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
--- Members can update own membership; orderer/creator can update payment confirmations
-CREATE POLICY "Members can update own membership"
-  ON pool_members FOR UPDATE
-  TO authenticated
   USING (
-    auth.uid() = user_id
+    user_id = auth.uid()
     OR EXISTS (
-      SELECT 1 FROM pools
-      WHERE pools.id = pool_members.pool_id
-      AND (pools.creator_id = auth.uid() OR pools.orderer_id = auth.uid())
+      SELECT 1 FROM pool_members pm
+      WHERE pm.pool_id = requirements.pool_id AND pm.user_id = auth.uid()
     )
   );
 
-CREATE POLICY "Users can leave pools"
-  ON pool_members FOR DELETE
+-- Users can create own requirements
+-- Handled via RPC
+-- CREATE POLICY "Users can create own requirements"
+--   ON requirements FOR INSERT
+--   TO authenticated
+--   WITH CHECK (auth.uid() = user_id);
+
+-- Users can update own requirements via secure RPCs (direct updates disabled)
+-- CREATE POLICY "Users can update own requirements"
+--   ON requirements FOR UPDATE
+--   TO authenticated
+--   USING (auth.uid() = user_id);
+
+-- Users can delete own requirements
+-- CREATE POLICY "Users can delete own requirements"
+--   ON requirements FOR DELETE
+--   TO authenticated
+--   USING (auth.uid() = user_id);
+
+-- ─── POOL MEMBERS POLICIES ────────────────────────────────────────
+
+-- Pool members visible only to participants
+CREATE POLICY "Pool members visible to participants only"
+  ON pool_members FOR SELECT
   TO authenticated
-  USING (auth.uid() = user_id);
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM pools p
+      WHERE p.id = pool_members.pool_id AND p.creator_id = auth.uid()
+    )
+    OR public.is_pool_member(pool_members.pool_id)
+  );
+
+-- Users can join pools
+-- Handled via `join_pool_atomic`
+-- CREATE POLICY "Users can join pools"
+--   ON pool_members FOR INSERT
+--   TO authenticated
+--   WITH CHECK (auth.uid() = user_id);
+
+-- Members can update own membership; orderer/creator can update payment confirmations
+-- Direct updates are disabled. All lifecycle changes MUST go through secure RPCs.
+-- CREATE POLICY "Members can update own membership"
+--   ON pool_members FOR UPDATE
+--   TO authenticated
+--   USING (
+--     auth.uid() = user_id
+--     OR EXISTS (
+--       SELECT 1 FROM pools
+--       WHERE pools.id = pool_members.pool_id
+--       AND (pools.creator_id = auth.uid() OR pools.orderer_id = auth.uid())
+--     )
+--   );
+
+-- Users can leave pools
+-- Handled via `leave_pool_atomic`
+-- CREATE POLICY "Users can leave pools"
+--   ON pool_members FOR DELETE
+--   TO authenticated
+--   USING (auth.uid() = user_id);
 
 -- ─── ORDERS POLICIES ──────────────────────────────────────────────
 
+-- Pool members can view orders
 CREATE POLICY "Pool members can view orders"
   ON orders FOR SELECT
   TO authenticated
-  USING (true);
+  USING (
+    EXISTS (
+      SELECT 1 FROM pool_members pm
+      WHERE pm.pool_id = orders.pool_id AND pm.user_id = auth.uid()
+    )
+  );
 
-CREATE POLICY "Orderer can create order"
-  ON orders FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = orderer_id);
+-- Orderer can create order
+-- Handled via `submit_order_proof_atomic`
+-- CREATE POLICY "Orderer can create order"
+--   ON orders FOR INSERT
+--   TO authenticated
+--   WITH CHECK (auth.uid() = orderer_id);
 
-CREATE POLICY "Orderer can update order"
-  ON orders FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = orderer_id);
+-- Orderer can update order via secure RPCs (direct updates disabled)
+-- CREATE POLICY "Orderer can update order"
+--   ON orders FOR UPDATE
+--   TO authenticated
+--   USING (auth.uid() = orderer_id);
 
 -- ─── CONNECTIONS POLICIES ──────────────────────────────────────────
 
@@ -476,7 +513,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO public.profiles (id, name, email)
@@ -498,7 +535,7 @@ CREATE OR REPLACE FUNCTION public.update_pool_total()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
@@ -542,7 +579,7 @@ CREATE OR REPLACE FUNCTION public.check_pool_ready()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   IF NEW.current_total >= NEW.minimum_order_value AND NEW.status = 'waiting' THEN
@@ -560,7 +597,7 @@ CREATE TRIGGER on_pool_total_update
 CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -572,6 +609,20 @@ CREATE TRIGGER profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
+-- Safe helper for RLS policies
+CREATE OR REPLACE FUNCTION public.is_pool_member(p_pool_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.pool_members
+    WHERE pool_id = p_pool_id AND user_id = auth.uid()
+  );
+$$;
+
 -- Haversine distance function (returns meters)
 CREATE OR REPLACE FUNCTION public.haversine_distance(
   lat1 DOUBLE PRECISION,
@@ -581,7 +632,7 @@ CREATE OR REPLACE FUNCTION public.haversine_distance(
 ) RETURNS DOUBLE PRECISION
 LANGUAGE plpgsql
 IMMUTABLE
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   r DOUBLE PRECISION := 6371000; -- Earth radius in meters
@@ -601,12 +652,15 @@ END;
 $$;
 
 -- Find nearby pools using Haversine
+DROP FUNCTION IF EXISTS public.get_nearby_pools(DOUBLE PRECISION, DOUBLE PRECISION, INTEGER, public.platform_type, public.pool_status);
+DROP FUNCTION IF EXISTS public.get_nearby_pools(DOUBLE PRECISION, DOUBLE PRECISION, INTEGER, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.get_nearby_pools(
   user_lat DOUBLE PRECISION,
   user_lon DOUBLE PRECISION,
   radius_meters INTEGER DEFAULT 500,
-  filter_platform platform_type DEFAULT NULL,
-  filter_status pool_status DEFAULT NULL
+  filter_platform TEXT DEFAULT NULL,
+  filter_status TEXT DEFAULT NULL
 ) RETURNS TABLE (
   pool_id UUID,
   platform platform_type,
@@ -626,7 +680,7 @@ CREATE OR REPLACE FUNCTION public.get_nearby_pools(
 )
 LANGUAGE plpgsql
 STABLE
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   RETURN QUERY
@@ -647,10 +701,10 @@ BEGIN
     public.haversine_distance(user_lat, user_lon, p.latitude, p.longitude) AS distance_meters,
     (SELECT COUNT(*) FROM public.pool_members pm WHERE pm.pool_id = p.id AND pm.commitment_status != 'withdrawn') AS member_count
   FROM public.pools p
-  WHERE (filter_status IS NULL AND p.status IN ('waiting', 'ready') OR p.status = filter_status)
+  WHERE (filter_status IS NULL OR filter_status = '' OR p.status::TEXT = filter_status)
     AND p.expires_at > NOW()
     AND public.haversine_distance(user_lat, user_lon, p.latitude, p.longitude) <= radius_meters
-    AND (filter_platform IS NULL OR p.platform = filter_platform)
+    AND (filter_platform IS NULL OR filter_platform = '' OR p.platform::TEXT = filter_platform)
   ORDER BY
     public.haversine_distance(user_lat, user_lon, p.latitude, p.longitude) ASC,
     (p.minimum_order_value - p.current_total) ASC;
@@ -675,7 +729,7 @@ CREATE OR REPLACE FUNCTION public.update_profile_safe(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   UPDATE public.profiles SET
@@ -702,7 +756,7 @@ CREATE OR REPLACE FUNCTION public.join_pool_atomic(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_pool RECORD;
@@ -806,7 +860,7 @@ CREATE OR REPLACE FUNCTION public.create_pool_atomic(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_pool_id UUID;
@@ -860,7 +914,7 @@ CREATE OR REPLACE FUNCTION public.volunteer_as_orderer(p_pool_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_pool RECORD;
@@ -923,7 +977,7 @@ RETURNS INTEGER
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_count INTEGER;
@@ -957,7 +1011,7 @@ CREATE OR REPLACE FUNCTION public.leave_pool_atomic(p_pool_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -975,12 +1029,61 @@ BEGIN
 END;
 $$;
 
+-- 1b. Cancel requirement atomic
+CREATE OR REPLACE FUNCTION public.cancel_requirement_atomic(p_requirement_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_req RECORD;
+  v_pool RECORD;
+  v_active_members INT;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+
+  SELECT * INTO v_req FROM public.requirements WHERE id = p_requirement_id;
+  IF v_req IS NULL THEN RAISE EXCEPTION 'Requirement not found'; END IF;
+  IF v_req.user_id != v_user_id THEN RAISE EXCEPTION 'Unauthorized'; END IF;
+  IF v_req.status = 'cancelled' THEN RETURN; END IF;
+
+  IF v_req.pool_id IS NOT NULL THEN
+    SELECT * INTO v_pool FROM public.pools WHERE id = v_req.pool_id;
+    IF v_pool.status NOT IN ('waiting', 'ready') THEN
+      RAISE EXCEPTION 'Cannot cancel requirement after order process has started';
+    END IF;
+
+    -- Withdraw from pool
+    UPDATE public.pool_members
+    SET commitment_status = 'withdrawn'
+    WHERE pool_id = v_pool.id AND user_id = v_user_id;
+
+    -- Check if pool becomes empty
+    SELECT COUNT(*) INTO v_active_members 
+    FROM public.pool_members 
+    WHERE pool_id = v_pool.id AND commitment_status != 'withdrawn';
+
+    IF v_active_members = 0 AND v_pool.creator_id = v_user_id THEN
+      UPDATE public.pools SET status = 'cancelled' WHERE id = v_pool.id;
+    END IF;
+  END IF;
+
+  -- Cancel the requirement
+  UPDATE public.requirements
+  SET status = 'cancelled', pool_id = NULL
+  WHERE id = p_requirement_id;
+END;
+$$;
+
 -- 2. Mark payment sent atomic
 CREATE OR REPLACE FUNCTION public.mark_payment_sent_atomic(p_pool_id UUID, p_proof_url TEXT DEFAULT NULL)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -1013,7 +1116,7 @@ CREATE OR REPLACE FUNCTION public.confirm_payment_received_atomic(p_member_id UU
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -1048,7 +1151,7 @@ CREATE OR REPLACE FUNCTION public.submit_order_proof_atomic(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -1077,7 +1180,7 @@ CREATE OR REPLACE FUNCTION public.mark_order_delivered_atomic(p_pool_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -1104,7 +1207,7 @@ CREATE OR REPLACE FUNCTION public.confirm_receipt_atomic(p_pool_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
@@ -1145,7 +1248,7 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
   SELECT id, name, avatar_url, area, successful_pools, completed_commitments, cancelled_pools, dispute_count, created_at
   FROM public.profiles WHERE id = p_user_id;
@@ -1156,7 +1259,7 @@ CREATE OR REPLACE FUNCTION public.get_admin_stats()
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_is_admin BOOLEAN;
@@ -1185,11 +1288,48 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.get_all_reports_admin()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+  v_result JSONB;
+BEGIN
+  SELECT is_admin INTO v_is_admin FROM public.profiles WHERE id = auth.uid();
+  IF NOT v_is_admin THEN RAISE EXCEPTION 'Not authorized'; END IF;
+  
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'id', r.id,
+      'reporter_id', r.reporter_id,
+      'reported_user_id', r.reported_user_id,
+      'pool_id', r.pool_id,
+      'reason', r.reason,
+      'description', r.description,
+      'status', r.status,
+      'admin_notes', r.admin_notes,
+      'created_at', r.created_at,
+      'resolved_at', r.resolved_at,
+      'reporter', jsonb_build_object('name', rep.name),
+      'reported', jsonb_build_object('name', rept.name)
+    ) ORDER BY r.created_at DESC
+  ) INTO v_result
+  FROM public.reports r
+  LEFT JOIN public.profiles rep ON r.reporter_id = rep.id
+  LEFT JOIN public.profiles rept ON r.reported_user_id = rept.id;
+
+  RETURN COALESCE(v_result, '[]'::jsonb);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.suspend_user_rpc(p_user_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_is_admin BOOLEAN;
@@ -1205,7 +1345,7 @@ CREATE OR REPLACE FUNCTION public.update_report_status_rpc(p_report_id UUID, p_s
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_is_admin BOOLEAN;
@@ -1218,3 +1358,87 @@ BEGIN
   WHERE id = p_report_id;
 END;
 $$;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RPC EXECUTE PERMISSIONS
+-- ═══════════════════════════════════════════════════════════════════
+
+-- Revoke execution from public for sensitive functions
+REVOKE EXECUTE ON FUNCTION public.update_profile_safe(text, text, text, float8, float8, boolean, int4, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.join_pool_atomic(uuid, numeric, text, uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.create_pool_atomic(text, numeric, int4, platform_type, text, numeric, timestamptz, int4, float8, float8, text, int4, timestamptz) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.volunteer_as_orderer(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.leave_pool_atomic(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.mark_payment_sent_atomic(uuid, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.confirm_payment_received_atomic(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.submit_order_proof_atomic(uuid, text, numeric, timestamptz, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.mark_order_delivered_atomic(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.confirm_receipt_atomic(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.suspend_user_rpc(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.update_report_status_rpc(uuid, report_status, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_admin_stats() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_nearby_pools(float8, float8, int4, text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_public_profile(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_unread_notification_count() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_all_reports_admin() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.is_pool_member(uuid) FROM PUBLIC;
+
+-- Revoke execution from public for trigger functions
+REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.update_pool_total() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.check_pool_ready() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.update_updated_at() FROM PUBLIC;
+
+-- Grant execution to authenticated users
+GRANT EXECUTE ON FUNCTION public.update_profile_safe(text, text, text, float8, float8, boolean, int4, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.join_pool_atomic(uuid, numeric, text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_pool_atomic(text, numeric, int4, platform_type, text, numeric, timestamptz, int4, float8, float8, text, int4, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.volunteer_as_orderer(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.leave_pool_atomic(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_payment_sent_atomic(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.confirm_payment_received_atomic(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_order_proof_atomic(uuid, text, numeric, timestamptz, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_order_delivered_atomic(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.confirm_receipt_atomic(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.suspend_user_rpc(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_report_status_rpc(uuid, report_status, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_stats() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_nearby_pools(float8, float8, int4, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_public_profile(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_unread_notification_count() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_all_reports_admin() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_pool_member(uuid) TO authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- STORAGE CONFIGURATION
+-- ═══════════════════════════════════════════════════════════════════
+-- Note: Must be executed by superuser/supabase_admin for standard Supabase setups
+--
+INSERT INTO storage.buckets (id, name, public) VALUES ('order-proofs', 'order-proofs', false) ON CONFLICT DO NOTHING;
+
+CREATE POLICY "Users can upload own proofs" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'order-proofs' AND
+  auth.uid()::text = (string_to_array(name, '/'))[1] AND
+  array_length(string_to_array(name, '/'), 1) = 3 AND
+  EXISTS (
+    SELECT 1 FROM public.pool_members pm 
+    WHERE pm.pool_id::text = (string_to_array(name, '/'))[2] AND pm.user_id = auth.uid()
+  )
+);
+CREATE POLICY "Users can update own proofs" ON storage.objects FOR UPDATE TO authenticated USING (
+  bucket_id = 'order-proofs' AND
+  auth.uid()::text = (string_to_array(name, '/'))[1] AND
+  array_length(string_to_array(name, '/'), 1) = 3 AND
+  EXISTS (
+    SELECT 1 FROM public.pool_members pm 
+    WHERE pm.pool_id::text = (string_to_array(name, '/'))[2] AND pm.user_id = auth.uid()
+  )
+);
+CREATE POLICY "Members can read pool proofs" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'order-proofs' AND
+  EXISTS (
+    SELECT 1 FROM public.pool_members pm 
+    WHERE pm.pool_id::text = (string_to_array(name, '/'))[2] AND pm.user_id = auth.uid()
+  )
+);
+

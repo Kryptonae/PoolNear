@@ -7,11 +7,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  getMyCreatedPools, getMyJoinedPools, getMyRequirements,
+  getMyCreatedPools, getMyJoinedPools, getMyRequirements, cancelRequirement,
   type Pool, type Requirement,
 } from '../services/pools';
 import { PoolCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
-import { LayoutDashboard, Package, Users, CheckCircle2, Clock, Plus, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Package, Users, CheckCircle2, Clock, Plus, ChevronRight, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 type TabKey = 'requirements' | 'active' | 'completed';
 
@@ -30,9 +31,13 @@ export function DashboardPage() {
   const [joinedPools, setJoinedPools] = useState<JoinedPoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancellingReqId, setCancellingReqId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -54,6 +59,24 @@ export function DashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleCancelRequirement = async (reqId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to cancel this requirement? This action cannot be undone.')) {
+      return;
+    }
+    
+    setCancellingReqId(reqId);
+    try {
+      await cancelRequirement(reqId);
+      toast.success('Requirement cancelled successfully');
+      fetchData(); // Refresh everything to update pool states
+    } catch (err) {
+      toast.error((err as Error).message || 'Failed to cancel requirement');
+    } finally {
+      setCancellingReqId(null);
+    }
+  };
 
   // Derive pool lists
   const activeStatuses = new Set(['waiting', 'ready', 'ordering', 'order_placed', 'delivering', 'delivered']);
@@ -216,25 +239,27 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {requirements.map((req) => (
-                <button
+                <div
                   key={req.id}
                   onClick={() => req.pool_id ? navigate(`/pool/${req.pool_id}`) : undefined}
-                  className="w-full text-left bg-white rounded-2xl border border-surface-200 p-4 hover:border-brand-300 hover:shadow-md transition-all active:scale-[0.98]"
+                  className={`w-full text-left bg-white rounded-2xl border border-surface-200 p-4 transition-all ${req.pool_id ? 'cursor-pointer hover:border-brand-300 hover:shadow-md active:scale-[0.98]' : ''}`}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <p className="font-semibold text-surface-900">{req.product_description}</p>
+                      <p className={`font-semibold ${req.status === 'cancelled' ? 'text-surface-400 line-through' : 'text-surface-900'}`}>{req.product_description}</p>
                       <p className="text-sm text-surface-500 mt-0.5">₹{req.amount} · Qty {req.quantity}</p>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
                       req.status === 'active' ? 'bg-amber-100 text-amber-700' :
                       req.status === 'matched' ? 'bg-green-100 text-green-700' :
                       req.status === 'fulfilled' ? 'bg-emerald-100 text-emerald-700' :
+                      req.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                       'bg-surface-100 text-surface-500'
                     }`}>
                       {req.status === 'active' ? '🔍 Searching' :
                        req.status === 'matched' ? '✅ Matched' :
                        req.status === 'fulfilled' ? '🎉 Fulfilled' :
+                       req.status === 'cancelled' ? '❌ Cancelled' :
                        req.status}
                     </span>
                   </div>
@@ -243,13 +268,24 @@ export function DashboardPage() {
                       <Clock size={12} />
                       Required by {new Date(req.required_by).toLocaleDateString()}
                     </span>
-                    {req.pool_id && (
-                      <span className="flex items-center gap-0.5 text-brand-600 font-medium">
-                        View Pool <ChevronRight size={12} />
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {req.status !== 'cancelled' && req.status !== 'fulfilled' && (
+                        <button
+                          onClick={(e) => handleCancelRequirement(req.id, e)}
+                          disabled={cancellingReqId === req.id}
+                          className="flex items-center gap-1 text-red-600 font-medium hover:text-red-700 disabled:opacity-50"
+                        >
+                          {cancellingReqId === req.id ? 'Cancelling...' : <><XCircle size={12} /> Cancel</>}
+                        </button>
+                      )}
+                      {req.pool_id && (
+                        <span className="flex items-center gap-0.5 text-brand-600 font-medium">
+                          View Pool <ChevronRight size={12} />
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

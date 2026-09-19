@@ -23,6 +23,7 @@ export function CreatePoolPage() {
   const [platformOther, setPlatformOther] = useState('');
   const [minOrderValue, setMinOrderValue] = useState(DEFAULT_MIN_ORDER.toString());
   const [timeOption, setTimeOption] = useState('1hr');
+  const [customMinutes, setCustomMinutes] = useState('10');
   const [maxDistance, setMaxDistance] = useState(500);
   const [destination, setDestination] = useState('');
   const [customDestination, setCustomDestination] = useState('');
@@ -63,13 +64,22 @@ export function CreatePoolPage() {
       return;
     }
 
-    const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption);
-    if (!selectedTime) {
-      toast.error('Please select when you need this.');
-      return;
+    let expiresAt: Date;
+    if (timeOption === 'custom') {
+      const mins = parseInt(customMinutes);
+      if (isNaN(mins) || mins < 1 || mins > 1440) {
+        toast.error('Please enter a valid time between 1 and 1440 minutes.');
+        return;
+      }
+      expiresAt = new Date(Date.now() + mins * 60 * 1000);
+    } else {
+      const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption);
+      if (!selectedTime) {
+        toast.error('Please select when you need this.');
+        return;
+      }
+      expiresAt = selectedTime.getExpiry();
     }
-
-    const expiresAt = selectedTime.getExpiry();
 
     setSubmitting(true);
     try {
@@ -101,8 +111,13 @@ export function CreatePoolPage() {
   }
 
   async function handleCreatePool() {
-    const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption)!;
-    const expiresAt = selectedTime.getExpiry();
+    let expiresAt: Date;
+    if (timeOption === 'custom') {
+      expiresAt = new Date(Date.now() + parseInt(customMinutes) * 60 * 1000);
+    } else {
+      const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption)!;
+      expiresAt = selectedTime.getExpiry();
+    }
     const finalDestination = destination === 'custom' ? customDestination : destination;
 
     setSubmitting(true);
@@ -311,7 +326,29 @@ export function CreatePoolPage() {
                 {t.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setTimeOption('custom')}
+              className={`chip ${timeOption === 'custom' ? 'active' : ''}`}
+            >
+              Custom
+            </button>
           </div>
+          {timeOption === 'custom' && (
+            <div className="relative mt-2">
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-surface-400 font-medium text-sm">minutes</span>
+              <input
+                type="number"
+                value={customMinutes}
+                onChange={(e) => setCustomMinutes(e.target.value)}
+                placeholder="10"
+                min="1"
+                max="1440"
+                className="w-full px-4 py-3 bg-white border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                required
+              />
+            </div>
+          )}
         </div>
 
         {/* Maximum Distance */}

@@ -133,8 +133,8 @@ export async function getNearbyPools(
     user_lat: lat,
     user_lon: lng,
     radius_meters: radiusMeters,
-    filter_platform: platformFilter || null,
-    filter_status: statusFilter || null,
+    filter_platform: platformFilter || '',
+    filter_status: statusFilter || '',
   });
 
   if (error) throw new Error(error.message);
@@ -159,23 +159,32 @@ export async function getPoolById(poolId: string) {
  * Get pool members with profile info.
  */
 export async function getPoolMembers(poolId: string): Promise<PoolMember[]> {
-  const { data, error } = await supabase
+  const { data: members, error } = await supabase
     .from('pool_members')
-    .select(`
-      *,
-      profiles:user_id (
-        id,
-        name,
-        successful_pools,
-        cancelled_pools
-      )
-    `)
+    .select('*')
     .eq('pool_id', poolId)
     .neq('commitment_status', 'withdrawn')
     .order('joined_at', { ascending: true });
 
   if (error) throw new Error(error.message);
-  return (data || []) as PoolMember[];
+  
+  if (!members || members.length === 0) return [];
+
+  const membersWithProfiles = await Promise.all(members.map(async (member) => {
+    const { data: profileData } = await supabase.rpc('get_public_profile', { p_user_id: member.user_id });
+    const profile = profileData?.[0];
+    return {
+      ...member,
+      profiles: profile ? {
+        id: profile.id,
+        name: profile.name,
+        successful_pools: profile.successful_pools,
+        cancelled_pools: profile.cancelled_pools
+      } : undefined
+    };
+  }));
+
+  return membersWithProfiles as PoolMember[];
 }
 
 /**
@@ -244,6 +253,14 @@ export async function joinPool(
  */
 export async function leavePool(poolId: string, _userId: string) {
   const { error } = await supabase.rpc('leave_pool_atomic', { p_pool_id: poolId });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Cancel a requirement (atomically leaves attached pool if waiting/ready).
+ */
+export async function cancelRequirement(requirementId: string) {
+  const { error } = await supabase.rpc('cancel_requirement_atomic', { p_requirement_id: requirementId });
   if (error) throw new Error(error.message);
 }
 
@@ -468,15 +485,7 @@ export async function getAdminStats() {
 }
 
 export async function getAllReports() {
-  const { data, error } = await supabase
-    .from('reports')
-    .select(`
-      *,
-      reporter:reporter_id (name),
-      reported:reported_user_id (name)
-    `)
-    .order('created_at', { ascending: false });
-
+  const { data, error } = await supabase.rpc('get_all_reports_admin');
   if (error) throw new Error(error.message);
   return data || [];
 }

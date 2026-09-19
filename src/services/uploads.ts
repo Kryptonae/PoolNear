@@ -76,7 +76,7 @@ export async function uploadOrderProof(
   // Get signed URL
   const { data: urlData, error: _signError } = await supabase.storage
     .from(BUCKET_NAME)
-    .createSignedUrl(filePath, 60 * 60 * 24); // 24 hours for current session
+    .createSignedUrl(filePath, 60 * 60); // 1 hour for secure viewing
 
   onProgress?.(100);
 
@@ -121,7 +121,7 @@ export async function uploadPaymentProof(
 
   const { data: urlData, error: _signError } = await supabase.storage
     .from(BUCKET_NAME)
-    .createSignedUrl(filePath, 60 * 60 * 24);
+    .createSignedUrl(filePath, 60 * 60); // 1 hour for secure viewing
 
   onProgress?.(100);
 

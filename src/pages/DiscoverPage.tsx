@@ -31,7 +31,10 @@ export function DiscoverPage() {
   const hasLocation = lat !== 0 || lng !== 0;
 
   const fetchPools = useCallback(async () => {
-    if (!hasLocation) return;
+    if (!hasLocation) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
