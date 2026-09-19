@@ -22,9 +22,13 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Toaster
-          position="top-center"
+          position="bottom-center"
+          containerStyle={{
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
+            zIndex: 99999,
+          }}
           toastOptions={{
-            duration: 3000,
+            duration: 4000,
             style: {
               background: '#1E293B',
               color: '#F8FAFC',
@@ -32,6 +36,7 @@ export default function App() {
               fontSize: '0.9rem',
               fontWeight: 500,
               padding: '12px 16px',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
             },
           }}
         />

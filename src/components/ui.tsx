@@ -274,12 +274,15 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-md sm:mx-4 bg-white rounded-t-2xl sm:rounded-2xl shadow-xl animate-slide-up max-h-[85dvh] flex flex-col overflow-hidden">
+      <div 
+        className="relative w-full sm:max-w-md sm:mx-4 bg-white rounded-t-2xl sm:rounded-2xl shadow-xl animate-slide-up max-h-[85dvh] flex flex-col overflow-hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
         <div className="px-5 pt-5 pb-2 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-surface-300 mx-auto mb-3 sm:hidden" />
           <h3 className="text-lg font-semibold text-surface-900">{title}</h3>

@@ -32,9 +32,10 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
-  phoneVerified: boolean;
-  signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
+  hasValidPhone: boolean;
+  signUp: (email: string, password: string, name: string, phone: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  resendVerificationEmail: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
@@ -49,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Phone verification is now basic profile validation (OTP removed)
-  const phoneVerified = !!profile?.phone && /^[6-9][0-9]{9}$/.test(profile.phone);
+  // Phone validation (replaces OTP phoneVerified)
+  const hasValidPhone = !!profile?.phone && /^[6-9][0-9]{9}$/.test(profile.phone);
 
   // Fetch profile from Supabase
   async function fetchProfile(userId: string) {
@@ -108,21 +109,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function signUp(email: string, password: string, name: string) {
-    const { error } = await supabase.auth.signUp({
+  async function signUp(email: string, password: string, name: string, phone: string) {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { name },
       },
     });
-    return { error: error ? new Error(error.message) : null };
+    
+    if (error) {
+      return { error: new Error(error.message) };
+    }
+
+    if (data.user) {
+      // Create or update profile with phone using the newly created session if possible
+      // However, the handle_new_user trigger in the DB normally inserts the initial profile.
+      // We explicitly call update_profile_safe right after to save the phone.
+      const { error: profileError } = await supabase.rpc('update_profile_safe', {
+        p_name: name,
+        p_phone: phone,
+        p_avatar_url: null,
+        p_latitude: null,
+        p_longitude: null,
+        p_location_permission: false,
+        p_preferred_radius: 500,
+        p_area: null
+      });
+
+      if (profileError) {
+        // Since email confirmation is likely enabled, the user won't be authenticated yet.
+        // We cannot securely update their profile here. We log the error but allow signup to succeed.
+        // The mandatory Phone Gate will catch them after they verify their email and sign in.
+        console.warn('Signup phone save deferred:', profileError.message);
+      }
+    }
+    
+    return { error: null };
   }
 
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
+    });
+    return { error: error ? new Error(error.message) : null };
+  }
+
+  async function resendVerificationEmail(email: string) {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
     });
     return { error: error ? new Error(error.message) : null };
   }
@@ -167,9 +204,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         session,
         loading,
-        phoneVerified,
+        hasValidPhone,
         signUp,
         signIn,
+        resendVerificationEmail,
         signOut,
         updateProfile,
         refreshProfile,

@@ -10,15 +10,15 @@ import { supabase } from '../lib/supabase';
 import { RADIUS_OPTIONS, APP_NAME } from '../lib/constants';
 import { LoadingState, ErrorState } from '../components/ui';
 import {
-  User, MapPin, Shield, CheckCircle2, XCircle, AlertTriangle,
-  Settings, LogOut, ChevronRight, Bell, Palette, Phone,
+  User, MapPin, Shield, CheckCircle2, XCircle, AlertTriangle, AlertCircle,
+  Settings, LogOut, ChevronRight, Bell, Palette,
 } from 'lucide-react';
-import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
+import { PhoneNumberModal } from '../components/PhoneNumberModal';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
   const { id: viewUserId } = useParams<{ id: string }>();
-  const { profile: myProfile, user, phoneVerified, signOut, updateProfile, refreshProfile } = useAuth();
+  const { profile: myProfile, user, hasValidPhone, signOut, updateProfile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const isOwnProfile = !viewUserId || viewUserId === user?.id;
@@ -200,22 +200,35 @@ export function ProfilePage() {
         {/* Phone Status (own profile only) */}
         {isOwnProfile && (
           <div className="mt-5 pt-4 border-t border-surface-100 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <Phone size={16} className="text-surface-400" />
-              <span className="font-medium text-surface-700">Phone Number</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-surface-700">Phone Number</span>
+                {hasValidPhone ? (
+                  <span className="bg-brand-100 text-brand-700 text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 size={12} /> Complete
+                  </span>
+                ) : (
+                  <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <AlertCircle size={12} /> Missing
+                  </span>
+                )}
+              </div>
+              {hasValidPhone ? (
+                <p className="font-mono text-surface-900 mt-1">{profile.phone}</p>
+              ) : (
+                <p className="text-surface-500 mt-1 text-sm">Required for pooling</p>
+              )}
             </div>
-            {phoneVerified ? (
-              <span className="text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                <CheckCircle2 size={12} /> Added
-              </span>
-            ) : (
-              <button
-                onClick={() => setShowPhoneModal(true)}
-                className="text-xs bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full font-medium flex items-center gap-1 hover:bg-amber-100 transition-colors"
-              >
-                <AlertTriangle size={12} /> Missing — Add now
-              </button>
-            )}
+            <button
+              onClick={() => setShowPhoneModal(true)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                hasValidPhone
+                  ? 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                  : 'bg-brand-50 text-brand-600 hover:bg-brand-100'
+              }`}
+            >
+              {hasValidPhone ? 'Change' : 'Add Phone'}
+            </button>
           </div>
         )}
       </div>
@@ -331,10 +344,10 @@ export function ProfilePage() {
       </p>
 
       {/* Phone Number Modal */}
-      <PhoneVerificationModal
+      <PhoneNumberModal
         isOpen={showPhoneModal}
         onClose={() => setShowPhoneModal(false)}
-        onVerified={() => refreshProfile()}
+        onSaved={() => refreshProfile()}
       />
     </div>
   );

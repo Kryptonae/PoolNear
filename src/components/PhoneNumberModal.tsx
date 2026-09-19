@@ -4,13 +4,13 @@ import { Modal } from './ui';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
-interface PhoneVerificationModalProps {
+interface PhoneNumberModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onVerified: () => void;
+  onSaved: () => void;
 }
 
-export function PhoneVerificationModal({ isOpen, onClose, onVerified }: PhoneVerificationModalProps) {
+export function PhoneNumberModal({ isOpen, onClose, onSaved }: PhoneNumberModalProps) {
   const { updateProfile } = useAuth();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,7 +40,7 @@ export function PhoneVerificationModal({ isOpen, onClose, onVerified }: PhoneVer
       if (err) throw new Error(err.message);
       
       toast.success('Phone number saved successfully!');
-      onVerified();
+      onSaved();
       handleClose();
     } catch (err) {
       setError((err as Error).message);

@@ -398,12 +398,10 @@ export async function respondToConnection(connectionId: string, accept: boolean)
   if (error) throw new Error(error.message);
 }
 
-export async function getPoolConnections(poolId: string, userId: string) {
-  const { data, error } = await supabase
-    .from('connections')
-    .select('*')
-    .eq('pool_id', poolId)
-    .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`);
+export async function getPoolConnections(poolId: string, _userId: string) {
+  const { data, error } = await supabase.rpc('get_pool_connections_with_phone', {
+    p_pool_id: poolId,
+  });
   if (error) throw new Error(error.message);
   return data || [];
 }

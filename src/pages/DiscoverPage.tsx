@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getNearbyPools, type PoolWithDistance } from '../services/pools';
+import { supabase } from '../lib/supabase';
 import { PoolCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
 import { PLATFORM_LIST, RADIUS_OPTIONS, type PlatformKey, type PoolStatusKey } from '../lib/constants';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
@@ -55,6 +56,23 @@ export function DiscoverPage() {
 
   useEffect(() => {
     fetchPools();
+
+    // Realtime subscription for early completion hiding
+    const channel = supabase.channel('discover_pools_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pools' },
+        () => {
+          // Instead of manually modifying the array, just re-run the secure query.
+          // The updated get_nearby_pools RPC will automatically exclude newly completed pools.
+          fetchPools();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchPools]);
 
   const filteredPools = searchQuery
@@ -155,12 +173,6 @@ export function DiscoverPage() {
               >
                 Ordering
               </button>
-              <button
-                onClick={() => setStatusFilter('delivered')}
-                className={`chip ${statusFilter === 'delivered' ? 'active' : ''}`}
-              >
-                Delivered
-              </button>
             </div>
           </div>
 
@@ -204,7 +216,7 @@ export function DiscoverPage() {
           )}
           {statusFilter && (
             <span className="chip active text-xs">
-              {statusFilter === 'ordering' ? '🛒 Ordering' : statusFilter === 'delivered' ? '📦 Delivered' : statusFilter}
+              {statusFilter === 'ordering' ? '🛒 Ordering' : statusFilter}
               <button onClick={() => setStatusFilter('')} className="ml-1 hover:text-red-500">
                 <X size={12} />
               </button>

@@ -17,7 +17,7 @@ import {
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { supabase } from '../lib/supabase';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState } from '../components/ui';
-import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
+import { PhoneNumberModal } from '../components/PhoneNumberModal';
 import { type PoolStatusKey } from '../lib/constants';
 import { formatDistance, haversineDistance } from '../lib/geo';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -29,7 +29,7 @@ import toast from 'react-hot-toast';
 
 export function PoolDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { profile, phoneVerified, refreshProfile } = useAuth();
+  const { profile, hasValidPhone, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const [pool, setPool] = useState<Pool | null>(null);
@@ -154,12 +154,35 @@ export function PoolDetailPage() {
   const distanceMeters = profile?.latitude && profile?.longitude
     ? haversineDistance(profile.latitude, profile.longitude, pool.latitude, pool.longitude)
     : null;
+    
+  const remainingRequired = Math.max(0, (pool.minimum_order_value || 0) - (pool.current_total || 0));
+
+  const isConnectedToOrderer = connections.some(c => 
+    c.status === 'accepted' && 
+    (
+      (c.requester_id === profile?.id && c.receiver_id === pool.orderer_id) ||
+      (c.requester_id === pool.orderer_id && c.receiver_id === profile?.id)
+    )
+  );
+  
+  const pendingConnectionToOrderer = connections.some(c =>
+    c.status === 'pending' && 
+    (
+      (c.requester_id === profile?.id && c.receiver_id === pool.orderer_id) ||
+      (c.requester_id === pool.orderer_id && c.receiver_id === profile?.id)
+    )
+  );
 
   // ─── ACTIONS ────────────────────────────────────────────────────
 
   async function handleJoin() {
-    if (!joinAmount || parseFloat(joinAmount) <= 0 || !joinProduct.trim()) {
+    const amount = parseFloat(joinAmount);
+    if (!joinAmount || amount <= 0 || !joinProduct.trim()) {
       toast.error('Please fill in all fields');
+      return;
+    }
+    if (remainingRequired > 0 && amount < remainingRequired) {
+      toast.error(`Minimum contribution required: ₹${remainingRequired}`);
       return;
     }
     setActionLoading(true);
@@ -388,7 +411,11 @@ export function PoolDetailPage() {
           </div>
           <div className="flex items-center gap-2 text-sm text-surface-600">
             <MapPin size={16} className="text-brand-400" />
-            <span className="font-medium">{pool.destination}</span>
+            <span className="font-medium truncate">{pool.destination}</span>
+          </div>
+          <div className="col-span-2 pt-2 mt-1 border-t border-surface-100 flex items-center justify-between text-xs text-surface-500">
+            <span>Pool Created</span>
+            <span className="font-medium text-surface-700">{format(new Date(pool.created_at), 'dd MMM yyyy, hh:mm a')}</span>
           </div>
         </div>
       </div>
@@ -425,7 +452,7 @@ export function PoolDetailPage() {
                       );
                       
                       if (!connection) {
-                        if (!phoneVerified) {
+                        if (!hasValidPhone) {
                           return (
                             <button onClick={() => setShowPhoneModal(true)} className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full font-medium hover:bg-red-100 transition-colors">
                               Add Phone to Connect
@@ -453,7 +480,7 @@ export function PoolDetailPage() {
                       }
                       
                       if (connection.status === 'accepted') {
-                        return <span className="text-xs font-mono bg-green-50 text-green-700 px-2 py-1 rounded-md">{member.profiles?.phone || 'No phone number'}</span>;
+                        return <span className="text-xs font-mono bg-green-50 text-green-700 px-2 py-1 rounded-md">{connection.contact_phone || 'No phone number'}</span>;
                       }
                       
                       return <span className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full">Connection Rejected</span>;
@@ -526,7 +553,22 @@ export function PoolDetailPage() {
           </div>
           
           <div className="pt-3 border-t border-surface-100">
-            {myMembership.payment_status === 'confirmed' ? (
+            {!isConnectedToOrderer ? (
+              <div className="space-y-3">
+                {pendingConnectionToOrderer ? (
+                  <div className="bg-amber-50 text-amber-700 p-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium border border-amber-200 text-center">
+                    <Clock size={16} /> Waiting for the orderer to accept your connection.
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-surface-700 text-center">Connect with the orderer before making payment.</p>
+                    <button onClick={() => handleRequestConnection(pool.orderer_id!)} className="w-full py-3 bg-brand-100 text-brand-700 rounded-xl font-bold hover:bg-brand-200 transition-colors shadow-sm border border-brand-200">
+                      Connect with Orderer
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : myMembership.payment_status === 'confirmed' ? (
               <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl flex items-center gap-2 text-sm font-medium">
                 <CheckCircle2 size={18} /> Payment Confirmed
               </div>
@@ -536,6 +578,12 @@ export function PoolDetailPage() {
               </div>
             ) : (
               <div className="space-y-3">
+                <div className="flex items-center justify-between bg-green-50 px-3 py-2 rounded-lg border border-green-200 mb-2">
+                  <span className="text-xs font-semibold text-green-700">Connected</span>
+                  <span className="text-xs font-mono font-medium text-green-800">
+                    {connections.find(c => c.status === 'accepted' && (c.requester_id === pool.orderer_id || c.receiver_id === pool.orderer_id))?.contact_phone || 'Phone hidden'}
+                  </span>
+                </div>
                 <div className="bg-surface-50 rounded-xl p-3 flex items-center justify-between border border-surface-100">
                   <span className="text-xs text-surface-600 font-medium flex items-center gap-2">
                     <Image size={14} className="text-surface-400" />
@@ -560,24 +608,28 @@ export function PoolDetailPage() {
 
       {/* Order Info (if placed) */}
       {order && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-2 animate-fade-in">
-          <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3 animate-fade-in">
+          <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm border-b border-blue-100 pb-2">
             <CheckCircle2 size={16} />
-            Order Placed
+            Order Information
           </div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <span className="text-blue-400">Order ID</span>
-              <p className="font-mono text-blue-800">{order.external_order_id || '—'}</p>
+              <span className="text-blue-500 text-xs">Order ID</span>
+              <p className="font-mono text-blue-900 font-medium">{order.external_order_id || '—'}</p>
             </div>
             <div>
-              <span className="text-blue-400">Total</span>
-              <p className="font-semibold text-blue-800">₹{order.order_value || '—'}</p>
+              <span className="text-blue-500 text-xs">Total</span>
+              <p className="font-semibold text-blue-900">₹{order.order_value || '—'}</p>
+            </div>
+            <div>
+              <span className="text-blue-500 text-xs">Placed At</span>
+              <p className="text-blue-900 font-medium whitespace-nowrap">{format(new Date(order.created_at), 'dd MMM yyyy, hh:mm a')}</p>
             </div>
             {order.expected_delivery && (
-              <div className="col-span-2">
-                <span className="text-blue-400">Expected Delivery</span>
-                <p className="text-blue-800">{format(new Date(order.expected_delivery), 'PPp')}</p>
+              <div>
+                <span className="text-blue-500 text-xs">Expected Delivery</span>
+                <p className="text-blue-800 font-medium">{format(new Date(order.expected_delivery), 'dd MMM yyyy, hh:mm a')}</p>
               </div>
             )}
             {order.proof_image_url && (
@@ -678,8 +730,29 @@ export function PoolDetailPage() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">₹</span>
               <input id="join-amount" type="number" value={joinAmount} onChange={(e) => setJoinAmount(e.target.value)} placeholder="30" min="1" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
             </div>
+            {remainingRequired > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 font-medium">
+                <div className="flex justify-between items-center mb-1">
+                  <span>Minimum Order</span>
+                  <span className="font-semibold">₹{pool.minimum_order_value}</span>
+                </div>
+                <div className="flex justify-between items-center mb-1">
+                  <span>Current Total</span>
+                  <span className="font-semibold">₹{pool.current_total || 0}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-blue-200 mt-1">
+                  <span>Still Needed</span>
+                  <span className="font-bold">₹{remainingRequired}</span>
+                </div>
+                {parseFloat(joinAmount || '0') > 0 && parseFloat(joinAmount || '0') < remainingRequired && (
+                  <p className="mt-2 text-red-600 font-semibold bg-red-50 p-2 rounded text-center">
+                    Add at least ₹{remainingRequired} to join this pool.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-          <button onClick={handleJoin} disabled={actionLoading} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60">
+          <button onClick={handleJoin} disabled={actionLoading || (remainingRequired > 0 && parseFloat(joinAmount || '0') < remainingRequired)} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed">
             {actionLoading ? 'Joining...' : 'Confirm & Join'}
           </button>
           <p className="text-xs text-surface-400 text-center">This is a commitment. You are not transferring money to PoolNear.</p>
@@ -763,11 +836,11 @@ export function PoolDetailPage() {
         </div>
       </Modal>
 
-      {/* Phone Number Modal */}
-      <PhoneVerificationModal
+      {/* Phone Number Modal for Connections */}
+      <PhoneNumberModal
         isOpen={showPhoneModal}
         onClose={() => setShowPhoneModal(false)}
-        onVerified={() => {
+        onSaved={() => {
           refreshProfile();
           refetchSilent();
         }}

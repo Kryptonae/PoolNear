@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { getNearbyPools, getNotifications, type PoolWithDistance } from '../services/pools';
 import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
+import { supabase } from '../lib/supabase';
 import { PoolCard, LocationPermissionCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
 import { RADIUS_OPTIONS, DEFAULT_MIN_ORDER } from '../lib/constants';
 import { MapPin, Plus, ArrowRight, Sparkles, ChevronDown, Bell } from 'lucide-react';
@@ -73,6 +74,21 @@ export function HomePage() {
 
   useEffect(() => {
     fetchPools();
+
+    // Realtime subscription for early completion hiding
+    const channel = supabase.channel('home_pools_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pools' },
+        () => {
+          fetchPools();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchPools]);
 
   useEffect(() => {
