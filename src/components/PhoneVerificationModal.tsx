@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Phone, ShieldCheck, AlertCircle } from 'lucide-react';
+import { ShieldCheck, AlertCircle } from 'lucide-react';
 import { Modal } from './ui';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
