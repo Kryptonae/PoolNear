@@ -32,11 +32,13 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
+  phoneVerified: boolean;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,6 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Derive phone verification from Supabase Auth's authoritative state
+  const phoneVerified = !!user?.phone_confirmed_at;
 
   // Fetch profile from Supabase
   async function fetchProfile(userId: string) {
@@ -60,6 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
     return data as Profile | null;
+  }
+
+  // Refresh user from Supabase Auth (e.g., after phone verification)
+  async function refreshUser() {
+    const { data: { user: freshUser } } = await supabase.auth.getUser();
+    if (freshUser) {
+      setUser(freshUser);
+    }
   }
 
   // Initialize auth state
@@ -154,11 +167,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         session,
         loading,
+        phoneVerified,
         signUp,
         signIn,
         signOut,
         updateProfile,
         refreshProfile,
+        refreshUser,
       }}
     >
       {children}

@@ -33,9 +33,14 @@
 
 /* ─── BASE STYLES ────────────────────────────────────────────── */
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -44,6 +49,15 @@ body {
   color: var(--color-surface-900);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  min-height: 100dvh;
+}
+
+/* Prevent iOS zoom on input focus (font-size < 16px) */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* ─── CUSTOM SCROLLBAR ───────────────────────────────────────── */
@@ -148,9 +162,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 999px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -158,6 +172,8 @@ body {
   background: white;
   color: var(--color-surface-600);
   user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .chip:hover {
@@ -193,4 +209,27 @@ body {
 
 .page-enter {
   animation: slideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── MOBILE RESPONSIVE UTILITIES ────────────────────────────── */
+
+/* Prevent any child from exceeding viewport width */
+#root {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Ensure all form elements respect container width */
+input, textarea, select, button {
+  max-width: 100%;
+}
+
+/* Number input: hide spinners for cleaner look */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }

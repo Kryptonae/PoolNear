@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/pools';
 import { LoadingState, EmptyState } from '../components/ui';
-import { Bell, CheckCheck, ChevronRight } from 'lucide-react';
+import { Bell, CheckCheck, ChevronRight, UserPlus, CreditCard, ShoppingBag, PackageCheck, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Notification {
@@ -20,6 +20,30 @@ interface Notification {
   data: Record<string, unknown>;
   read: boolean;
   created_at: string;
+}
+
+function getNotificationIcon(type: string) {
+  switch (type) {
+    case 'member_joined':
+    case 'connection_request':
+    case 'connection_accepted':
+      return <UserPlus size={18} className="text-blue-500" />;
+    case 'payment_sent':
+    case 'payment_confirmed':
+      return <CreditCard size={18} className="text-emerald-500" />;
+    case 'order_placed':
+    case 'pool_ready':
+      return <ShoppingBag size={18} className="text-brand-500" />;
+    case 'order_delivered':
+    case 'receipt_confirmed':
+    case 'pool_completed':
+      return <PackageCheck size={18} className="text-emerald-500" />;
+    case 'pool_failed':
+    case 'pool_expired':
+      return <AlertCircle size={18} className="text-red-500" />;
+    default:
+      return <Bell size={18} className="text-brand-500" />;
+  }
 }
 
 export function NotificationsPage() {
@@ -117,6 +141,9 @@ export function NotificationsPage() {
                     {!notif.read && (
                       <div className="w-2 h-2 rounded-full bg-brand-500 flex-shrink-0" />
                     )}
+                    <div className="flex-shrink-0 bg-surface-100 p-1.5 rounded-lg">
+                      {getNotificationIcon(notif.type)}
+                    </div>
                     <p className={`text-sm font-semibold truncate ${notif.read ? 'text-surface-700' : 'text-surface-900'}`}>
                       {notif.title}
                     </p>

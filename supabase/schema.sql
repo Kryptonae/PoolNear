@@ -455,10 +455,11 @@ CREATE POLICY "Users can view own connections"
   TO authenticated
   USING (auth.uid() = requester_id OR auth.uid() = receiver_id);
 
-CREATE POLICY "Users can create connections"
-  ON connections FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = requester_id);
+-- REMOVED: Direct INSERT policy disabled to enforce phone verification via request_connection_verified RPC
+-- CREATE POLICY "Users can create connections"
+--   ON connections FOR INSERT
+--   TO authenticated
+--   WITH CHECK (auth.uid() = requester_id);
 
 CREATE POLICY "Receiver can update connection"
   ON connections FOR UPDATE

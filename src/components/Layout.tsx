@@ -9,6 +9,8 @@ import { Home, Search, PlusCircle, LayoutDashboard, User, Bell } from 'lucide-re
 import { APP_NAME } from '../lib/constants';
 import { useAuth } from '../contexts/AuthContext';
 import { getNotifications } from '../services/pools';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home' },
@@ -35,10 +37,35 @@ export function Layout() {
 
   useEffect(() => {
     fetchUnread();
-    // Refresh notification count every 30 seconds
-    const interval = setInterval(fetchUnread, 30000);
-    return () => clearInterval(interval);
-  }, [fetchUnread]);
+    
+    // Refresh fallback every 60 seconds
+    const interval = setInterval(fetchUnread, 60000);
+    
+    if (!profile?.id) {
+      return () => clearInterval(interval);
+    }
+
+    // Realtime subscription
+    const channel = supabase.channel(`notifications:${profile.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
+        (payload) => {
+          setUnreadCount((c) => c + 1);
+          const newNotif = payload.new as any;
+          toast.success(newNotif.message || newNotif.title || 'New notification', {
+            icon: '🔔',
+            duration: 4000,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUnread, profile?.id]);
 
   return (
     <div className="min-h-screen bg-surface-50 flex flex-col lg:flex-row">

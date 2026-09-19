@@ -18,7 +18,7 @@ export function CreatePoolPage() {
 
   const [productDescription, setProductDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState('1');
   const [platform, setPlatform] = useState<PlatformKey | ''>('');
   const [platformOther, setPlatformOther] = useState('');
   const [minOrderValue, setMinOrderValue] = useState(DEFAULT_MIN_ORDER.toString());
@@ -126,7 +126,7 @@ export function CreatePoolPage() {
         {
           product_description: productDescription.trim(),
           amount: parseFloat(amount),
-          quantity,
+          quantity: parseInt(quantity) || 1,
           platform: platform as PlatformKey,
           platform_other: platform === 'other' ? platformOther.trim() : undefined,
           minimum_order_value: parseFloat(minOrderValue) || DEFAULT_MIN_ORDER,
@@ -227,21 +227,36 @@ export function CreatePoolPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                onClick={() => {
+                  const current = parseInt(quantity) || 1;
+                  setQuantity(Math.max(1, current - 1).toString());
+                }}
                 className="w-10 h-11 rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg"
               >
                 −
               </button>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                min="1"
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  if (val.length <= 2) setQuantity(val);
+                }}
+                onBlur={() => {
+                  const parsed = parseInt(quantity);
+                  if (isNaN(parsed) || parsed < 1) setQuantity('1');
+                }}
                 className="flex-1 text-center py-3 bg-white border border-surface-200 rounded-xl text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
               />
               <button
                 type="button"
-                onClick={() => setQuantity(quantity + 1)}
+                onClick={() => {
+                  const current = parseInt(quantity) || 1;
+                  setQuantity(Math.min(99, current + 1).toString());
+                }}
                 className="w-10 h-11 rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg"
               >
                 +
@@ -253,7 +268,7 @@ export function CreatePoolPage() {
         {/* Platform Selection */}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-surface-700">Where are you ordering from?</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {PLATFORM_LIST.map((p) => (
               <button
                 key={p.key}

@@ -32,7 +32,7 @@ export function PlatformBadge({ platform, platformOther, size = 'md' }: Platform
       }}
     >
       <span>{info.icon}</span>
-      <span>{label}</span>
+      <span className="truncate max-w-[120px]">{label}</span>
     </span>
   );
 }
@@ -47,7 +47,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const info = POOL_STATUS[status];
   return (
     <span
-      className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+      className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
       style={{
         backgroundColor: info.bgColor,
         color: info.color,
@@ -72,11 +72,11 @@ export function AmountProgress({ current, target }: AmountProgressProps) {
 
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between items-baseline">
+      <div className="flex justify-between items-baseline gap-2 flex-wrap">
         <span className="text-lg font-bold text-surface-900">
           ₹{current.toFixed(0)} <span className="text-surface-400 font-normal text-sm">/ ₹{target.toFixed(0)}</span>
         </span>
-        <span className="text-sm font-semibold text-brand-600">
+        <span className="text-sm font-semibold text-brand-600 whitespace-nowrap">
           ₹{remaining.toFixed(0)} more needed
         </span>
       </div>
@@ -121,20 +121,20 @@ export function PoolCard({ pool, distanceMeters, memberCount, onClick }: PoolCar
       className="w-full text-left bg-white rounded-2xl border border-surface-200 p-4 hover:border-brand-300 hover:shadow-lg hover:shadow-brand-500/5 transition-all duration-200 active:scale-[0.98] group"
       aria-label={`View pool on ${PLATFORMS[pool.platform].label}`}
     >
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-3 gap-2">
         <PlatformBadge platform={pool.platform} platformOther={pool.platform_other} />
         <StatusBadge status={pool.status} />
       </div>
 
       {/* Amount Progress */}
       <div className="mb-3">
-        <div className="flex justify-between items-baseline mb-1.5">
+        <div className="flex justify-between items-baseline mb-1.5 gap-2 flex-wrap">
           <span className="text-xl font-bold text-surface-900">
             ₹{pool.current_total.toFixed(0)}
             <span className="text-surface-400 font-normal text-sm"> / ₹{pool.minimum_order_value.toFixed(0)}</span>
           </span>
           {remaining > 0 && (
-            <span className="text-sm font-semibold text-brand-600">
+            <span className="text-sm font-semibold text-brand-600 whitespace-nowrap">
               ₹{remaining.toFixed(0)} needed
             </span>
           )}
@@ -165,14 +165,14 @@ export function PoolCard({ pool, distanceMeters, memberCount, onClick }: PoolCar
       </div>
 
       {/* Destination & Arrow */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-surface-100">
-        <span className="text-xs text-surface-400 flex items-center gap-1">
-          <Package size={12} />
-          {pool.destination}
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-surface-100 gap-2">
+        <span className="text-xs text-surface-400 flex items-center gap-1 truncate min-w-0">
+          <Package size={12} className="flex-shrink-0" />
+          <span className="truncate">{pool.destination}</span>
         </span>
         <ChevronRight
           size={18}
-          className="text-surface-300 group-hover:text-brand-500 transition-colors"
+          className="text-surface-300 group-hover:text-brand-500 transition-colors flex-shrink-0"
         />
       </div>
     </button>
@@ -274,16 +274,17 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md bg-white rounded-2xl sm:rounded-2xl shadow-xl animate-slide-up overflow-hidden">
-        <div className="px-6 pt-6 pb-2">
+      <div className="relative w-full sm:max-w-md sm:mx-4 bg-white rounded-t-2xl sm:rounded-2xl shadow-xl animate-slide-up max-h-[85dvh] flex flex-col overflow-hidden">
+        <div className="px-5 pt-5 pb-2 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-surface-300 mx-auto mb-3 sm:hidden" />
           <h3 className="text-lg font-semibold text-surface-900">{title}</h3>
         </div>
-        <div className="px-6 pb-6">{children}</div>
+        <div className="px-5 pb-5 overflow-y-auto flex-1 overscroll-contain">{children}</div>
       </div>
     </div>
   );
@@ -339,5 +340,3 @@ export function LocationPermissionCard({ onAllow, onSkip, loading, denied }: Loc
     </div>
   );
 }
-
-

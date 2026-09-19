@@ -11,13 +11,14 @@ import { RADIUS_OPTIONS, APP_NAME } from '../lib/constants';
 import { LoadingState, ErrorState } from '../components/ui';
 import {
   User, MapPin, Shield, CheckCircle2, XCircle, AlertTriangle,
-  Settings, LogOut, ChevronRight, Bell, Palette,
+  Settings, LogOut, ChevronRight, Bell, Palette, Phone,
 } from 'lucide-react';
+import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
   const { id: viewUserId } = useParams<{ id: string }>();
-  const { profile: myProfile, user, signOut, updateProfile, refreshProfile } = useAuth();
+  const { profile: myProfile, user, phoneVerified, signOut, updateProfile, refreshProfile, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const isOwnProfile = !viewUserId || viewUserId === user?.id;
@@ -27,6 +28,7 @@ export function ProfilePage() {
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editArea, setEditArea] = useState('');
   const [editRadius, setEditRadius] = useState(500);
@@ -194,6 +196,28 @@ export function ProfilePage() {
         <p className="text-xs text-surface-400 mt-4 text-center">
           Member since {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
+
+        {/* Phone Verification Status (own profile only) */}
+        {isOwnProfile && (
+          <div className="mt-5 pt-4 border-t border-surface-100 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <Phone size={16} className="text-surface-400" />
+              <span className="font-medium text-surface-700">Phone Verification</span>
+            </div>
+            {phoneVerified ? (
+              <span className="text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                <CheckCircle2 size={12} /> Verified
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowPhoneModal(true)}
+                className="text-xs bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full font-medium flex items-center gap-1 hover:bg-amber-100 transition-colors"
+              >
+                <AlertTriangle size={12} /> Not verified — Verify now
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Settings Panel (own profile only) */}
@@ -305,6 +329,13 @@ export function ProfilePage() {
       <p className="text-center text-xs text-surface-400 leading-relaxed">
         {APP_NAME} trust scores are calculated from pool activity and cannot be manually edited.
       </p>
+
+      {/* Phone Verification Modal */}
+      <PhoneVerificationModal
+        isOpen={showPhoneModal}
+        onClose={() => setShowPhoneModal(false)}
+        onVerified={() => refreshUser()}
+      />
     </div>
   );
 }

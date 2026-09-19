@@ -382,12 +382,10 @@ export async function getMyRequirements(userId: string) {
 
 // ─── CONNECTIONS ────────────────────────────────────────────────
 
-export async function requestConnection(requesterId: string, receiverId: string, poolId: string) {
-  const { error } = await supabase.from('connections').insert({
-    requester_id: requesterId,
-    receiver_id: receiverId,
-    pool_id: poolId,
-    status: 'pending',
+export async function requestConnection(_requesterId: string, receiverId: string, poolId: string) {
+  const { error } = await supabase.rpc('request_connection_verified', {
+    p_receiver_id: receiverId,
+    p_pool_id: poolId,
   });
   if (error) throw new Error(error.message);
 }

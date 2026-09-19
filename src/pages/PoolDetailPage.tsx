@@ -16,6 +16,7 @@ import {
 } from '../services/pools';
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState } from '../components/ui';
+import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
 import { type PoolStatusKey } from '../lib/constants';
 import { formatDistance, haversineDistance } from '../lib/geo';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -27,7 +28,7 @@ import toast from 'react-hot-toast';
 
 export function PoolDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { profile } = useAuth();
+  const { profile, phoneVerified, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [pool, setPool] = useState<Pool | null>(null);
@@ -41,6 +42,7 @@ export function PoolDetailPage() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showOrderProofModal, setShowOrderProofModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [joinAmount, setJoinAmount] = useState('');
   const [joinProduct, setJoinProduct] = useState('');
   const [proofOrderId, setProofOrderId] = useState('');
@@ -343,8 +345,8 @@ export function PoolDetailPage() {
               <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-semibold text-sm">
                 {(member.profiles?.name || 'U')[0].toUpperCase()}
               </div>
-              <div>
-                <p className="text-sm font-medium text-surface-900">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-surface-900 truncate">
                   {member.profiles?.name || 'User'}
                   {member.user_id === pool.orderer_id && (
                     <span className="ml-1.5 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Orderer</span>
@@ -366,6 +368,13 @@ export function PoolDetailPage() {
                       );
                       
                       if (!connection) {
+                        if (!phoneVerified) {
+                          return (
+                            <button onClick={() => setShowPhoneModal(true)} className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full font-medium hover:bg-red-100 transition-colors">
+                              Verify Phone to Connect
+                            </button>
+                          );
+                        }
                         return (
                           <button onClick={() => handleRequestConnection(member.user_id)} className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-full font-medium hover:bg-brand-100 transition-colors">
                             Connect for Payment
@@ -396,36 +405,8 @@ export function PoolDetailPage() {
                 )}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right flex-shrink-0 ml-2">
               <p className="text-sm font-semibold text-surface-900">₹{member.contribution}</p>
-              {/* Payment status for orderer view */}
-              {isOrderer && member.user_id !== profile?.id && (
-                <div className="mt-1 flex flex-col items-end gap-1">
-                  {member.payment_status === 'confirmed' ? (
-                    <span className="text-xs text-green-600 font-medium">✓ Paid</span>
-                  ) : member.payment_status === 'sent' ? (
-                    <>
-                      <button
-                        onClick={() => handleConfirmPayment(member.id)}
-                        className="text-xs text-brand-600 font-medium hover:underline"
-                        disabled={actionLoading}
-                      >
-                        Confirm Payment
-                      </button>
-                      {member.payment_proof_url && (
-                        <button
-                          onClick={() => handleViewProof(member.payment_proof_url!)}
-                          className="text-[10px] text-surface-500 hover:text-surface-700 underline"
-                        >
-                          View Proof
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-xs text-surface-400">Pending</span>
-                  )}
-                </div>
-              )}
               {/* Receipt status */}
               {(status === 'delivered' || status === 'completed') && (
                 <div className="mt-1">
@@ -440,6 +421,85 @@ export function PoolDetailPage() {
           </div>
         ))}
       </div>
+
+      {/* Payment Dashboard (Orderer) */}
+      {isOrderer && (status === 'ordering' || status === 'order_placed') && (
+        <div className="bg-white rounded-2xl border border-brand-200 p-5 space-y-3 animate-fade-in shadow-sm">
+          <h3 className="font-semibold text-brand-900 text-sm">Payment Dashboard</h3>
+          <div className="space-y-3">
+            {members.filter(m => m.user_id !== profile?.id).map(member => (
+              <div key={member.id} className="flex items-center justify-between p-3 bg-surface-50 rounded-xl border border-surface-100">
+                <div>
+                  <p className="text-sm font-medium text-surface-900">{member.profiles?.name || 'User'}</p>
+                  <p className="text-xs font-semibold text-surface-900 mt-0.5">₹{member.contribution}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  {member.payment_status === 'confirmed' ? (
+                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-semibold flex items-center gap-1"><CheckCircle2 size={12}/> Confirmed</span>
+                  ) : member.payment_status === 'sent' ? (
+                    <>
+                      <button onClick={() => handleConfirmPayment(member.id)} disabled={actionLoading} className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-full font-medium hover:bg-brand-600 active:scale-95 transition-all shadow-sm">
+                        Confirm Payment
+                      </button>
+                      {member.payment_proof_url && (
+                        <button onClick={() => handleViewProof(member.payment_proof_url!)} className="text-[10px] text-surface-500 hover:text-surface-700 underline flex items-center gap-1">
+                          <Image size={10} /> View Proof
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs bg-surface-200 text-surface-600 px-2.5 py-1 rounded-full font-medium">Pending</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Payment Card (Member) */}
+      {isMember && !isOrderer && (status === 'ordering' || status === 'order_placed') && myMembership && (
+        <div className="bg-white rounded-2xl border border-brand-200 p-5 space-y-4 animate-fade-in shadow-sm">
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="font-semibold text-surface-900 text-sm">Payment Required</h3>
+              <p className="text-xs text-surface-500 mt-0.5">Pay to {members.find(m => m.user_id === pool.orderer_id)?.profiles?.name || 'the orderer'}</p>
+            </div>
+            <p className="text-lg font-bold text-surface-900">₹{myMembership.contribution}</p>
+          </div>
+          
+          <div className="pt-3 border-t border-surface-100">
+            {myMembership.payment_status === 'confirmed' ? (
+              <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl flex items-center gap-2 text-sm font-medium">
+                <CheckCircle2 size={18} /> Payment Confirmed
+              </div>
+            ) : myMembership.payment_status === 'sent' ? (
+              <div className="bg-amber-50 text-amber-700 p-3 rounded-xl flex items-center gap-2 text-sm font-medium">
+                <Clock size={18} /> Waiting for confirmation
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-surface-50 rounded-xl p-3 flex items-center justify-between border border-surface-100">
+                  <span className="text-xs text-surface-600 font-medium flex items-center gap-2">
+                    <Image size={14} className="text-surface-400" />
+                    {paymentProofFile ? paymentProofFile.name : 'Proof (optional)'}
+                  </span>
+                  <button onClick={() => paymentFileRef.current?.click()} className="text-xs text-brand-600 font-semibold hover:underline">
+                    {paymentProofFile ? 'Change' : 'Attach'}
+                  </button>
+                  <input ref={paymentFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)} />
+                </div>
+                <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] shadow-sm flex items-center justify-center gap-2">
+                  <ShieldCheck size={18} /> I've Paid
+                  {uploadProgress > 0 && uploadProgress < 100 && (
+                    <span className="text-xs opacity-70">({uploadProgress}%)</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Order Info (if placed) */}
       {order && (
@@ -517,34 +577,7 @@ export function PoolDetailPage() {
           </button>
         )}
 
-        {/* Mark Payment Sent (non-orderer members) */}
-        {isMember && !isOrderer && myMembership?.payment_status === 'pending' && (status === 'ordering' || status === 'order_placed') && (
-          <div className="space-y-2">
-            {/* Optional payment proof upload */}
-            <div className="bg-surface-50 rounded-xl p-3 flex items-center gap-3">
-              <button
-                onClick={() => paymentFileRef.current?.click()}
-                className="text-xs text-brand-600 font-medium hover:underline flex items-center gap-1"
-              >
-                <Image size={14} />
-                {paymentProofFile ? paymentProofFile.name : 'Attach payment proof (optional)'}
-              </button>
-              <input
-                ref={paymentFileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
-              />
-            </div>
-            <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] flex items-center justify-center gap-2">
-              <ShieldCheck size={18} /> I&apos;ve Paid
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <span className="text-xs opacity-70">({uploadProgress}%)</span>
-              )}
-            </button>
-          </div>
-        )}
+        {/* Old payment sent section removed */}
 
         {/* Mark Delivered (orderer only) */}
         {isOrderer && status === 'order_placed' && (
@@ -672,6 +705,16 @@ export function PoolDetailPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Phone Verification Modal */}
+      <PhoneVerificationModal
+        isOpen={showPhoneModal}
+        onClose={() => setShowPhoneModal(false)}
+        onVerified={() => {
+          refreshUser();
+          fetchAll();
+        }}
+      />
     </div>
   );
 }
