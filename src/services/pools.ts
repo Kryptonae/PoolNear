@@ -27,7 +27,20 @@ export interface Pool {
   expires_at: string;
 }
 
-export interface PoolWithDistance extends Pool {
+export interface PoolWithDistance {
+  pool_id: string;
+  platform: PlatformKey;
+  platform_other: string | null;
+  minimum_order_value: number;
+  current_total: number;
+  max_members: number;
+  destination: string;
+  status: PoolStatusKey;
+  required_by: string;
+  expires_at: string;
+  created_at: string;
+  creator_id: string;
+  orderer_id: string | null;
   distance_meters: number;
   member_count: number;
 }
@@ -67,6 +80,7 @@ export interface PoolMember {
   profiles?: {
     id: string;
     name: string;
+    phone?: string;
     successful_pools: number;
     cancelled_pools: number;
   };
@@ -112,14 +126,15 @@ export async function getNearbyPools(
   lat: number,
   lng: number,
   radiusMeters: number = 500,
-  platformFilter?: PlatformKey
+  platformFilter?: PlatformKey,
+  statusFilter?: PoolStatusKey
 ): Promise<PoolWithDistance[]> {
   const { data, error } = await supabase.rpc('get_nearby_pools', {
     user_lat: lat,
     user_lon: lng,
     radius_meters: radiusMeters,
     filter_platform: platformFilter || null,
-    filter_status: 'waiting',
+    filter_status: statusFilter || null,
   });
 
   if (error) throw new Error(error.message);
@@ -182,70 +197,26 @@ export async function getPoolOrder(poolId: string): Promise<PoolOrder | null> {
 /**
  * Create a new pool with the user's requirement as the first member.
  */
-export async function createPool(input: CreatePoolInput, userId: string) {
-  // 1. Create the pool
-  const { data: pool, error: poolError } = await supabase
-    .from('pools')
-    .insert({
-      creator_id: userId,
-      platform: input.platform,
-      platform_other: input.platform_other || null,
-      minimum_order_value: input.minimum_order_value,
-      current_total: 0,
-      max_members: input.max_members,
-      destination: input.destination,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      status: 'waiting',
-      required_by: input.required_by,
-      expires_at: input.expires_at,
-    })
-    .select()
-    .single();
+export async function createPool(input: CreatePoolInput, _userId: string) {
+  const { data, error } = await supabase.rpc('create_pool_atomic', {
+    p_product_description: input.product_description,
+    p_amount: input.amount,
+    p_quantity: input.quantity,
+    p_platform: input.platform,
+    p_platform_other: input.platform_other || null,
+    p_minimum_order_value: input.minimum_order_value,
+    p_required_by: input.required_by,
+    p_maximum_distance: input.maximum_distance,
+    p_latitude: input.latitude,
+    p_longitude: input.longitude,
+    p_destination: input.destination,
+    p_max_members: input.max_members,
+    p_expires_at: input.expires_at,
+  });
 
-  if (poolError) throw new Error(poolError.message);
+  if (error) throw new Error(error.message);
 
-  // 2. Create the requirement
-  const { data: requirement, error: reqError } = await supabase
-    .from('requirements')
-    .insert({
-      user_id: userId,
-      pool_id: pool.id,
-      product_description: input.product_description,
-      amount: input.amount,
-      quantity: input.quantity,
-      platform: input.platform,
-      platform_other: input.platform_other || null,
-      minimum_order_value: input.minimum_order_value,
-      required_by: input.required_by,
-      maximum_distance: input.maximum_distance,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      destination: input.destination,
-      status: 'matched',
-      expires_at: input.expires_at,
-    })
-    .select()
-    .single();
-
-  if (reqError) throw new Error(reqError.message);
-
-  // 3. Add creator as first pool member
-  const { error: memberError } = await supabase
-    .from('pool_members')
-    .insert({
-      pool_id: pool.id,
-      user_id: userId,
-      requirement_id: requirement.id,
-      contribution: input.amount,
-      commitment_status: 'committed',
-      payment_status: 'pending',
-      receipt_status: 'pending',
-    });
-
-  if (memberError) throw new Error(memberError.message);
-
-  return pool as Pool;
+  return getPoolById(data as string);
 }
 
 /**
@@ -253,110 +224,35 @@ export async function createPool(input: CreatePoolInput, userId: string) {
  */
 export async function joinPool(
   poolId: string,
-  userId: string,
+  _userId: string,
   contribution: number,
   productDescription: string,
   requirementId?: string
 ) {
-  // Check pool capacity
-  const members = await getPoolMembers(poolId);
-  const pool = await getPoolById(poolId);
+  const { error } = await supabase.rpc('join_pool_atomic', {
+    p_pool_id: poolId,
+    p_contribution: contribution,
+    p_product_description: productDescription,
+    p_requirement_id: requirementId || null,
+  });
 
-  if (members.length >= pool.max_members) {
-    throw new Error('This pool is already full.');
-  }
-
-  if (members.some((m) => m.user_id === userId)) {
-    throw new Error('You are already a member of this pool.');
-  }
-
-  if (pool.status !== 'waiting' && pool.status !== 'ready') {
-    throw new Error('This pool is no longer accepting members.');
-  }
-
-  // Create requirement if not provided
-  let reqId = requirementId;
-  if (!reqId) {
-    const { data: req, error: reqError } = await supabase
-      .from('requirements')
-      .insert({
-        user_id: userId,
-        pool_id: poolId,
-        product_description: productDescription,
-        amount: contribution,
-        quantity: 1,
-        platform: pool.platform,
-        platform_other: pool.platform_other,
-        minimum_order_value: pool.minimum_order_value,
-        required_by: pool.required_by,
-        maximum_distance: 500,
-        latitude: pool.latitude,
-        longitude: pool.longitude,
-        destination: pool.destination,
-        status: 'matched',
-        expires_at: pool.expires_at,
-      })
-      .select()
-      .single();
-
-    if (reqError) throw new Error(reqError.message);
-    reqId = req.id;
-  }
-
-  // Add member
-  const { error: memberError } = await supabase
-    .from('pool_members')
-    .insert({
-      pool_id: poolId,
-      user_id: userId,
-      requirement_id: reqId,
-      contribution,
-      commitment_status: 'committed',
-      payment_status: 'pending',
-      receipt_status: 'pending',
-    });
-
-  if (memberError) throw new Error(memberError.message);
+  if (error) throw new Error(error.message);
 }
 
 /**
  * Leave a pool (withdraw membership).
  */
-export async function leavePool(poolId: string, userId: string) {
-  const { error } = await supabase
-    .from('pool_members')
-    .update({ commitment_status: 'withdrawn' })
-    .eq('pool_id', poolId)
-    .eq('user_id', userId);
-
+export async function leavePool(poolId: string, _userId: string) {
+  const { error } = await supabase.rpc('leave_pool_atomic', { p_pool_id: poolId });
   if (error) throw new Error(error.message);
-
-  // Update requirement status back to active
-  await supabase
-    .from('requirements')
-    .update({ status: 'active', pool_id: null })
-    .eq('pool_id', poolId)
-    .eq('user_id', userId);
 }
 
 /**
  * Volunteer as the orderer.
  */
-export async function volunteerAsOrderer(poolId: string, userId: string) {
-  const { error: memberError } = await supabase
-    .from('pool_members')
-    .update({ can_place_order: true })
-    .eq('pool_id', poolId)
-    .eq('user_id', userId);
-
-  if (memberError) throw new Error(memberError.message);
-
-  const { error: poolError } = await supabase
-    .from('pools')
-    .update({ orderer_id: userId, status: 'ordering' })
-    .eq('id', poolId);
-
-  if (poolError) throw new Error(poolError.message);
+export async function volunteerAsOrderer(poolId: string, _userId: string) {
+  const { error } = await supabase.rpc('volunteer_as_orderer', { p_pool_id: poolId });
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -364,59 +260,39 @@ export async function volunteerAsOrderer(poolId: string, userId: string) {
  */
 export async function submitOrderProof(
   poolId: string,
-  userId: string,
+  _userId: string,
   externalOrderId: string,
   orderValue: number,
   expectedDelivery: string,
   proofImageUrl?: string
 ) {
-  const pool = await getPoolById(poolId);
-
-  const { error } = await supabase.from('orders').insert({
-    pool_id: poolId,
-    orderer_id: userId,
-    platform: pool.platform,
-    platform_other: pool.platform_other,
-    external_order_id: externalOrderId,
-    order_value: orderValue,
-    proof_image_url: proofImageUrl || null,
-    expected_delivery: expectedDelivery,
-    status: 'placed',
+  const { error } = await supabase.rpc('submit_order_proof_atomic', {
+    p_pool_id: poolId,
+    p_external_order_id: externalOrderId,
+    p_order_value: orderValue,
+    p_expected_delivery: expectedDelivery,
+    p_proof_url: proofImageUrl || null,
   });
 
   if (error) throw new Error(error.message);
-
-  await supabase
-    .from('pools')
-    .update({ status: 'order_placed' })
-    .eq('id', poolId);
 }
 
 /**
  * Mark payment as sent by a member.
  */
-export async function markPaymentSent(poolId: string, userId: string, proofUrl?: string) {
-  const { error } = await supabase
-    .from('pool_members')
-    .update({
-      payment_status: 'sent',
-      payment_proof_url: proofUrl || null,
-    })
-    .eq('pool_id', poolId)
-    .eq('user_id', userId);
-
+export async function markPaymentSent(poolId: string, _userId: string, proofUrl?: string) {
+  const { error } = await supabase.rpc('mark_payment_sent_atomic', {
+    p_pool_id: poolId,
+    p_proof_url: proofUrl || null,
+  });
   if (error) throw new Error(error.message);
 }
 
 /**
  * Confirm payment received (by the orderer for a specific member).
  */
-export async function confirmPaymentReceived(poolId: string, memberId: string) {
-  const { error } = await supabase
-    .from('pool_members')
-    .update({ payment_status: 'confirmed' })
-    .eq('id', memberId);
-
+export async function confirmPaymentReceived(_poolId: string, memberId: string) {
+  const { error } = await supabase.rpc('confirm_payment_received_atomic', { p_member_id: memberId });
   if (error) throw new Error(error.message);
 }
 
@@ -424,61 +300,16 @@ export async function confirmPaymentReceived(poolId: string, memberId: string) {
  * Mark delivery received by orderer.
  */
 export async function markOrderDelivered(poolId: string) {
-  await supabase
-    .from('pools')
-    .update({ status: 'delivered' })
-    .eq('id', poolId);
-
-  await supabase
-    .from('orders')
-    .update({ status: 'delivered', actual_delivery: new Date().toISOString() })
-    .eq('pool_id', poolId);
+  const { error } = await supabase.rpc('mark_order_delivered_atomic', { p_pool_id: poolId });
+  if (error) throw new Error(error.message);
 }
 
 /**
  * Confirm receipt of item by a member.
  */
-export async function confirmReceipt(poolId: string, userId: string) {
-  const { error } = await supabase
-    .from('pool_members')
-    .update({ receipt_status: 'received' })
-    .eq('pool_id', poolId)
-    .eq('user_id', userId);
-
+export async function confirmReceipt(poolId: string, _userId: string) {
+  const { error } = await supabase.rpc('confirm_receipt_atomic', { p_pool_id: poolId });
   if (error) throw new Error(error.message);
-
-  // Check if all members have confirmed
-  const members = await getPoolMembers(poolId);
-  const allReceived = members.every((m) => m.receipt_status === 'received');
-
-  if (allReceived) {
-    await supabase
-      .from('pools')
-      .update({ status: 'completed' })
-      .eq('id', poolId);
-
-    // Update requirement statuses
-    await supabase
-      .from('requirements')
-      .update({ status: 'fulfilled' })
-      .eq('pool_id', poolId);
-
-    // Update member profiles: increment successful_pools
-    for (const member of members) {
-      await supabase.rpc('increment_field', {
-        row_id: member.user_id,
-        field_name: 'successful_pools',
-      }).catch(() => {
-        // If RPC doesn't exist, do it manually
-        supabase
-          .from('profiles')
-          .update({
-            successful_pools: (member.profiles?.successful_pools ?? 0) + 1,
-          })
-          .eq('id', member.user_id);
-      });
-    }
-  }
 }
 
 // ─── USER'S POOLS QUERIES ───────────────────────────────────────
@@ -611,44 +442,28 @@ export async function markAllNotificationsRead(userId: string) {
 }
 
 export async function createNotification(
-  userId: string,
-  type: string,
-  title: string,
-  message: string,
-  data?: Record<string, unknown>
+  _userId: string,
+  _type: string,
+  _title: string,
+  _message: string,
+  _data?: Record<string, unknown>
 ) {
-  await supabase.from('notifications').insert({
-    user_id: userId,
-    type,
-    title,
-    message,
-    data: data || {},
-  });
+  // Notifications are now created by server-side RPCs and triggers.
+  // This client-side function is deprecated.
+  console.warn('createNotification called from client, which is deprecated.');
 }
 
 // ─── ADMIN ──────────────────────────────────────────────────────
 
 export async function getAdminStats() {
-  const [
-    { count: totalUsers },
-    { count: activePools },
-    { count: completedPools },
-    { count: failedPools },
-    { count: pendingReports },
-  ] = await Promise.all([
-    supabase.from('profiles').select('*', { count: 'exact', head: true }),
-    supabase.from('pools').select('*', { count: 'exact', head: true }).in('status', ['waiting', 'ready', 'ordering', 'order_placed']),
-    supabase.from('pools').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
-    supabase.from('pools').select('*', { count: 'exact', head: true }).eq('status', 'failed'),
-    supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-  ]);
-
-  return {
-    totalUsers: totalUsers || 0,
-    activePools: activePools || 0,
-    completedPools: completedPools || 0,
-    failedPools: failedPools || 0,
-    pendingReports: pendingReports || 0,
+  const { data, error } = await supabase.rpc('get_admin_stats');
+  if (error) throw new Error(error.message);
+  return data as {
+    totalUsers: number;
+    activePools: number;
+    completedPools: number;
+    failedPools: number;
+    pendingReports: number;
   };
 }
 
@@ -667,22 +482,15 @@ export async function getAllReports() {
 }
 
 export async function updateReportStatus(reportId: string, status: string, adminNotes?: string) {
-  const { error } = await supabase
-    .from('reports')
-    .update({
-      status,
-      admin_notes: adminNotes || null,
-      resolved_at: status === 'resolved' || status === 'dismissed' ? new Date().toISOString() : null,
-    })
-    .eq('id', reportId);
-
+  const { error } = await supabase.rpc('update_report_status_rpc', {
+    p_report_id: reportId,
+    p_status: status,
+    p_admin_notes: adminNotes || null,
+  });
   if (error) throw new Error(error.message);
 }
 
 export async function suspendUser(userId: string) {
-  const { error } = await supabase
-    .from('profiles')
-    .update({ account_status: 'suspended' })
-    .eq('id', userId);
+  const { error } = await supabase.rpc('suspend_user_rpc', { p_user_id: userId });
   if (error) throw new Error(error.message);
 }

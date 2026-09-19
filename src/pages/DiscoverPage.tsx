@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getNearbyPools, type PoolWithDistance } from '../services/pools';
 import { PoolCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
-import { PLATFORM_LIST, RADIUS_OPTIONS, type PlatformKey } from '../lib/constants';
+import { PLATFORM_LIST, RADIUS_OPTIONS, type PlatformKey, type PoolStatusKey } from '../lib/constants';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 
 export function DiscoverPage() {
@@ -22,6 +22,7 @@ export function DiscoverPage() {
 
   // Filters
   const [platformFilter, setPlatformFilter] = useState<PlatformKey | ''>('');
+  const [statusFilter, setStatusFilter] = useState<PoolStatusKey | ''>('');
   const [radiusFilter, setRadiusFilter] = useState(profile?.preferred_radius || 500);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -38,7 +39,8 @@ export function DiscoverPage() {
         lat,
         lng,
         radiusFilter,
-        platformFilter || undefined
+        platformFilter || undefined,
+        statusFilter || undefined
       );
       setPools(data);
     } catch (err) {
@@ -46,7 +48,7 @@ export function DiscoverPage() {
     } finally {
       setLoading(false);
     }
-  }, [lat, lng, radiusFilter, platformFilter, hasLocation]);
+  }, [lat, lng, radiusFilter, platformFilter, statusFilter, hasLocation]);
 
   useEffect(() => {
     fetchPools();
@@ -59,7 +61,7 @@ export function DiscoverPage() {
       )
     : pools;
 
-  const activeFilterCount = (platformFilter ? 1 : 0) + (radiusFilter !== 500 ? 1 : 0);
+  const activeFilterCount = (platformFilter ? 1 : 0) + (radiusFilter !== 500 ? 1 : 0) + (statusFilter ? 1 : 0);
 
   return (
     <div className="px-4 py-6 space-y-4">
@@ -103,6 +105,7 @@ export function DiscoverPage() {
             <button
               onClick={() => {
                 setPlatformFilter('');
+                setStatusFilter('');
                 setRadiusFilter(500);
               }}
               className="text-xs text-brand-600 hover:text-brand-700 font-medium"
@@ -130,6 +133,31 @@ export function DiscoverPage() {
                   <span>{p.icon}</span> {p.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <label className="block text-xs font-medium text-surface-500 mb-2">Status</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setStatusFilter('')}
+                className={`chip ${!statusFilter ? 'active' : ''}`}
+              >
+                Accepting
+              </button>
+              <button
+                onClick={() => setStatusFilter('ordering')}
+                className={`chip ${statusFilter === 'ordering' ? 'active' : ''}`}
+              >
+                Ordering
+              </button>
+              <button
+                onClick={() => setStatusFilter('delivered')}
+                className={`chip ${statusFilter === 'delivered' ? 'active' : ''}`}
+              >
+                Delivered
+              </button>
             </div>
           </div>
 
@@ -167,6 +195,14 @@ export function DiscoverPage() {
             <span className="chip active text-xs">
               📍 {RADIUS_OPTIONS.find((r) => r.value === radiusFilter)?.label}
               <button onClick={() => setRadiusFilter(500)} className="ml-1 hover:text-red-500">
+                <X size={12} />
+              </button>
+            </span>
+          )}
+          {statusFilter && (
+            <span className="chip active text-xs">
+              {statusFilter === 'ordering' ? '🛒 Ordering' : statusFilter === 'delivered' ? '📦 Delivered' : statusFilter}
+              <button onClick={() => setStatusFilter('')} className="ml-1 hover:text-red-500">
                 <X size={12} />
               </button>
             </span>

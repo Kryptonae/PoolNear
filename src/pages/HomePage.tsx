@@ -7,10 +7,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { getNearbyPools, type PoolWithDistance } from '../services/pools';
+import { getNearbyPools, getNotifications, type PoolWithDistance } from '../services/pools';
+import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
 import { PoolCard, LocationPermissionCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
-import { APP_NAME, RADIUS_OPTIONS } from '../lib/constants';
-import { MapPin, Plus, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
+import { RADIUS_OPTIONS, DEFAULT_MIN_ORDER } from '../lib/constants';
+import { MapPin, Plus, ArrowRight, Sparkles, ChevronDown, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function HomePage() {
@@ -19,9 +20,11 @@ export function HomePage() {
   const navigate = useNavigate();
 
   const [pools, setPools] = useState<PoolWithDistance[]>([]);
+  const [bestMatch, setBestMatch] = useState<MatchCandidate | null>(null);
   const [poolsLoading, setPoolsLoading] = useState(false);
   const [poolsError, setPoolsError] = useState<string | null>(null);
   const [showRadiusMenu, setShowRadiusMenu] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const radius = profile?.preferred_radius || 500;
   const hasLocation = coordinates !== null || (profile?.latitude && profile?.longitude);
@@ -35,6 +38,22 @@ export function HomePage() {
     try {
       const data = await getNearbyPools(lat, lng, radius);
       setPools(data);
+
+      // Run smart matching
+      if (data.length > 0) {
+        const matches = findBestMatches(data, {
+          platform: data[0].platform, // Use first pool's platform as default
+          amount: 30, // Typical small order amount
+          latitude: lat,
+          longitude: lng,
+          maximumDistance: radius,
+          requiredBy: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours
+          minimumOrderValue: DEFAULT_MIN_ORDER,
+        });
+        setBestMatch(matches.length > 0 ? matches[0] : null);
+      } else {
+        setBestMatch(null);
+      }
     } catch (err) {
       setPoolsError((err as Error).message);
     } finally {
@@ -42,9 +61,23 @@ export function HomePage() {
     }
   }, [lat, lng, radius, hasLocation]);
 
+  const fetchNotifications = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const notifs = await getNotifications(profile.id);
+      setUnreadCount(notifs.filter((n: Record<string, unknown>) => !n.read).length);
+    } catch {
+      // Silent fail for notifications count
+    }
+  }, [profile?.id]);
+
   useEffect(() => {
     fetchPools();
   }, [fetchPools]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
 
   // Try to get location on mount if previously granted
   useEffect(() => {
@@ -90,48 +123,67 @@ export function HomePage() {
                 </p>
               </div>
             </div>
-            <div className="relative">
+            <div className="flex items-center gap-2">
+              {/* Notification Bell */}
               <button
-                onClick={() => setShowRadiusMenu(!showRadiusMenu)}
-                className="px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 rounded-lg hover:bg-brand-100 transition-colors flex items-center gap-1"
+                onClick={() => navigate('/dashboard')}
+                className="relative w-9 h-9 rounded-xl bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 transition-colors"
+                aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
               >
-                Change <ChevronDown size={14} />
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
-              {showRadiusMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowRadiusMenu(false)} />
-                  <div className="absolute right-0 top-full mt-2 bg-white border border-surface-200 rounded-xl shadow-lg z-50 py-1 w-36 animate-scale-in">
-                    {RADIUS_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => handleRadiusChange(opt.value)}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-50 transition-colors ${
-                          opt.value === radius ? 'text-brand-600 font-semibold bg-brand-50/50' : 'text-surface-700'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              {/* Radius Menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowRadiusMenu(!showRadiusMenu)}
+                  className="px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 rounded-lg hover:bg-brand-100 transition-colors flex items-center gap-1"
+                >
+                  Change <ChevronDown size={14} />
+                </button>
+                {showRadiusMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowRadiusMenu(false)} />
+                    <div className="absolute right-0 top-full mt-2 bg-white border border-surface-200 rounded-xl shadow-lg z-50 py-1 w-36 animate-scale-in">
+                      {RADIUS_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleRadiusChange(opt.value)}
+                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-50 transition-colors ${
+                            opt.value === radius ? 'text-brand-600 font-semibold bg-brand-50/50' : 'text-surface-700'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Smart Match Banner (shown if there's a perfect match pool) */}
-      {hasLocation && pools.length > 0 && pools[0].minimum_order_value - pools[0].current_total <= 30 && (
+      {/* Smart Match Banner */}
+      {hasLocation && bestMatch && bestMatch.score >= 50 && (
         <button
-          onClick={() => navigate(`/pool/${pools[0].pool_id}`)}
+          onClick={() => navigate(`/pool/${bestMatch.pool.pool_id}`)}
           className="w-full bg-gradient-to-r from-brand-500 to-emerald-500 rounded-2xl p-4 text-white text-left hover:shadow-lg hover:shadow-brand-500/20 transition-all active:scale-[0.98] animate-slide-up"
         >
           <div className="flex items-center gap-2 mb-1">
             <Sparkles size={16} />
-            <span className="text-sm font-semibold opacity-90">Perfect Match Found 🎯</span>
+            <span className="text-sm font-semibold opacity-90">
+              {getMatchQuality(bestMatch.score).emoji} {getMatchQuality(bestMatch.score).label}
+            </span>
+            <span className="text-xs opacity-70 ml-auto">Score: {bestMatch.score}/100</span>
           </div>
           <p className="text-sm opacity-80">
-            A pool near you needs only ₹{Math.max(pools[0].minimum_order_value - pools[0].current_total, 0).toFixed(0)} more
+            {bestMatch.reasons.slice(0, 2).join(' · ')}
           </p>
           <div className="flex items-center gap-1 mt-2 text-sm font-semibold">
             View Pool <ArrowRight size={14} />

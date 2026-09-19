@@ -6,9 +6,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { createPool } from '../services/pools';
+import { createPool, getNearbyPools, joinPool } from '../services/pools';
+import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
 import { PLATFORM_LIST, TIME_OPTIONS, RADIUS_OPTIONS, DESTINATION_PRESETS, DEFAULT_MIN_ORDER, DEFAULT_MAX_MEMBERS, type PlatformKey } from '../lib/constants';
-import { ArrowLeft, Package, IndianRupee, Clock, MapPin, Users, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Package, IndianRupee, Clock, MapPin, Users, ChevronRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function CreatePoolPage() {
@@ -27,6 +28,8 @@ export function CreatePoolPage() {
   const [customDestination, setCustomDestination] = useState('');
   const [maxMembers, setMaxMembers] = useState(DEFAULT_MAX_MEMBERS);
   const [submitting, setSubmitting] = useState(false);
+  const [matches, setMatches] = useState<MatchCandidate[]>([]);
+  const [showMatchModal, setShowMatchModal] = useState(false);
 
   const hasLocation = profile?.latitude && profile?.longitude;
 
@@ -67,6 +70,39 @@ export function CreatePoolPage() {
     }
 
     const expiresAt = selectedTime.getExpiry();
+
+    setSubmitting(true);
+    try {
+      // 1. Check for matches first
+      const nearby = await getNearbyPools(profile!.latitude!, profile!.longitude!, maxDistance, platform as PlatformKey, 'waiting');
+      const foundMatches = findBestMatches(nearby, {
+        platform: platform as PlatformKey,
+        amount: parseFloat(amount),
+        latitude: profile!.latitude!,
+        longitude: profile!.longitude!,
+        maximumDistance: maxDistance,
+        requiredBy: expiresAt.toISOString(),
+        minimumOrderValue: parseFloat(minOrderValue) || DEFAULT_MIN_ORDER,
+      });
+
+      if (foundMatches.length > 0) {
+        setMatches(foundMatches);
+        setShowMatchModal(true);
+        setSubmitting(false);
+        return;
+      }
+      
+      // If no matches, create pool directly
+      await handleCreatePool();
+    } catch (err) {
+      toast.error((err as Error).message || 'Failed to search for matches');
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCreatePool() {
+    const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption)!;
+    const expiresAt = selectedTime.getExpiry();
     const finalDestination = destination === 'custom' ? customDestination : destination;
 
     setSubmitting(true);
@@ -94,6 +130,24 @@ export function CreatePoolPage() {
       navigate(`/pool/${pool.id}`);
     } catch (err) {
       toast.error((err as Error).message || 'Failed to create pool');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleJoinMatch(poolId: string) {
+    setSubmitting(true);
+    try {
+      await joinPool(
+        poolId,
+        profile!.id,
+        parseFloat(amount),
+        productDescription.trim()
+      );
+      toast.success('Successfully joined pool!');
+      navigate(`/pool/${poolId}`);
+    } catch (err) {
+      toast.error((err as Error).message || 'Failed to join pool');
     } finally {
       setSubmitting(false);
     }
@@ -364,6 +418,69 @@ export function CreatePoolPage() {
           By creating a pool, you agree to coordinate with nearby users. PoolNear does not hold or transfer money.
         </p>
       </form>
+
+      {/* Match Modal */}
+      {showMatchModal && (
+        <div className="fixed inset-0 bg-surface-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col animate-slide-up">
+            <div className="p-5 border-b border-surface-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-surface-900">Matches Found!</h2>
+                <p className="text-sm text-surface-500">We found existing pools nearby.</p>
+              </div>
+              <button onClick={() => setShowMatchModal(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              {matches.map((match) => {
+                const quality = getMatchQuality(match.score);
+                return (
+                  <div key={match.pool.pool_id} className="border rounded-xl p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div className="flex gap-2 items-center">
+                        <span className="text-2xl">{quality.emoji}</span>
+                        <div>
+                          <p className="font-semibold text-sm" style={{ color: quality.color }}>{quality.label}</p>
+                          <p className="text-xs text-surface-500">{match.pool.distance_meters.toFixed(0)}m away • {match.pool.platform}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-surface-900 text-sm">₹{(match.pool.minimum_order_value - match.pool.current_total).toFixed(0)} needed</p>
+                        <p className="text-xs text-surface-500">of ₹{match.pool.minimum_order_value}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {match.reasons.map((r, i) => (
+                        <span key={i} className="text-[10px] bg-surface-100 px-2 py-0.5 rounded-full text-surface-600">{r}</span>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => handleJoinMatch(match.pool.pool_id)}
+                      disabled={submitting}
+                      className="w-full py-2 bg-brand-50 text-brand-700 font-semibold rounded-lg hover:bg-brand-100 transition-colors disabled:opacity-50"
+                    >
+                      {submitting ? 'Joining...' : 'Join this Pool'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-5 border-t border-surface-100 bg-surface-50">
+              <button
+                onClick={() => {
+                  setShowMatchModal(false);
+                  handleCreatePool();
+                }}
+                disabled={submitting}
+                className="w-full py-3 bg-surface-900 text-white rounded-xl font-semibold hover:bg-surface-800 transition-colors disabled:opacity-50"
+              >
+                Create New Pool Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

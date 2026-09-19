@@ -11,60 +11,6 @@ import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function AuthPage() {
-  const { user, loading } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Redirect if already authenticated
-  if (!loading && user) {
-    return <Navigate to="/" replace />;
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-
-    // Validation
-    if (!email.trim() || !password.trim()) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-    if (isSignUp && !name.trim()) {
-      toast.error('Please enter your name');
-      return;
-    }
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      if (isSignUp) {
-        const { error } = await (await import('../contexts/AuthContext')).useAuth().signUp(email, password, name);
-        if (error) throw error;
-        toast.success('Account created! Check your email to verify.');
-      } else {
-        const { error } = await (await import('../contexts/AuthContext')).useAuth().signIn(email, password);
-        if (error) throw error;
-        toast.success('Welcome back!');
-      }
-    } catch (err) {
-      toast.error((err as Error).message || 'Authentication failed');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // We need to use the hook directly, not dynamically import
-  return <AuthPageInner />;
-}
-
-function AuthPageInner() {
   const { user, loading, signUp, signIn } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');

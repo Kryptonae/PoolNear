@@ -124,10 +124,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function updateProfile(updates: Partial<Profile>) {
     if (!user) return { error: new Error('Not authenticated') };
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', user.id);
+    const { error } = await supabase.rpc('update_profile_safe', {
+      p_name: updates.name,
+      p_phone: updates.phone,
+      p_avatar_url: updates.avatar_url,
+      p_latitude: updates.latitude,
+      p_longitude: updates.longitude,
+      p_location_permission: updates.location_permission,
+      p_preferred_radius: updates.preferred_radius,
+      p_area: updates.area
+    });
 
     if (!error) {
       setProfile((prev) => prev ? { ...prev, ...updates } : null);

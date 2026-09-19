@@ -1,0 +1,397 @@
+// ═══════════════════════════════════════════════════════════════════
+// PoolNear — Admin Dashboard Page
+// Admin-only page for managing users, pools, reports, and stats
+// ═══════════════════════════════════════════════════════════════════
+
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  getAdminStats, getAllReports, updateReportStatus, suspendUser,
+} from '../services/pools';
+import { LoadingState, ErrorState, EmptyState } from '../components/ui';
+import {
+  Shield, Users, Activity, AlertTriangle, CheckCircle2,
+  XCircle, Flag, ChevronDown, ChevronUp, Ban,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+
+interface AdminStats {
+  totalUsers: number;
+  activePools: number;
+  completedPools: number;
+  failedPools: number;
+  pendingReports: number;
+}
+
+interface Report {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  pool_id: string | null;
+  reason: string;
+  description: string | null;
+  status: string;
+  admin_notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  reporter?: { name: string };
+  reported?: { name: string };
+}
+
+type AdminTab = 'overview' | 'reports';
+
+export function AdminPage() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Check admin access
+  if (!profile?.is_admin) {
+    return (
+      <div className="px-4 py-6">
+        <ErrorState
+          message="You do not have admin access. This page is restricted to administrators."
+          onRetry={() => navigate('/')}
+        />
+      </div>
+    );
+  }
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [statsData, reportsData] = await Promise.all([
+        getAdminStats(),
+        getAllReports(),
+      ]);
+      setStats(statsData);
+      setReports(reportsData as Report[]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  async function handleResolveReport(reportId: string, status: 'resolved' | 'dismissed', notes?: string) {
+    setActionLoading(true);
+    try {
+      await updateReportStatus(reportId, status, notes);
+      toast.success(`Report ${status}`);
+      fetchData();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSuspendUser(userId: string) {
+    if (!confirm('Are you sure you want to suspend this user? This action can be reversed.')) return;
+    setActionLoading(true);
+    try {
+      await suspendUser(userId);
+      toast.success('User suspended');
+      fetchData();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  if (loading) return <LoadingState message="Loading admin dashboard..." />;
+  if (error) return <ErrorState message={error} onRetry={fetchData} />;
+
+  const pendingReports = reports.filter((r) => r.status === 'pending');
+  const resolvedReports = reports.filter((r) => r.status !== 'pending');
+
+  return (
+    <div className="px-4 py-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+          <Shield size={20} className="text-red-500" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-surface-900">Admin Dashboard</h1>
+          <p className="text-sm text-surface-500">Manage users, pools, and reports</p>
+        </div>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="flex gap-1 bg-surface-100 rounded-xl p-1">
+        {(['overview', 'reports'] as AdminTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium capitalize transition-all ${
+              activeTab === tab
+                ? 'bg-white text-surface-900 shadow-sm'
+                : 'text-surface-500 hover:text-surface-700'
+            }`}
+          >
+            {tab}
+            {tab === 'reports' && pendingReports.length > 0 && (
+              <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                {pendingReports.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && stats && (
+        <div className="space-y-4 animate-fade-in">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon={<Users size={20} />} label="Total Users" value={stats.totalUsers} color="brand" />
+            <StatCard icon={<Activity size={20} />} label="Active Pools" value={stats.activePools} color="blue" />
+            <StatCard icon={<CheckCircle2 size={20} />} label="Completed" value={stats.completedPools} color="emerald" />
+            <StatCard icon={<XCircle size={20} />} label="Failed" value={stats.failedPools} color="red" />
+          </div>
+
+          {/* Pending Reports Alert */}
+          {stats.pendingReports > 0 && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className="w-full bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 hover:bg-amber-100 transition-colors"
+            >
+              <Flag size={20} className="text-amber-600" />
+              <div className="text-left flex-1">
+                <p className="text-sm font-semibold text-amber-800">
+                  {stats.pendingReports} pending report{stats.pendingReports !== 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-amber-600">Review and resolve user reports</p>
+              </div>
+              <ChevronDown size={16} className="text-amber-400" />
+            </button>
+          )}
+
+          {/* Platform Metrics Placeholder */}
+          <div className="bg-white rounded-2xl border border-surface-200 p-5">
+            <h3 className="text-sm font-semibold text-surface-900 mb-3">Quick Stats</h3>
+            <div className="space-y-2 text-sm text-surface-600">
+              <div className="flex justify-between py-2 border-b border-surface-100">
+                <span>Success Rate</span>
+                <span className="font-semibold text-surface-900">
+                  {stats.completedPools + stats.failedPools > 0
+                    ? `${((stats.completedPools / (stats.completedPools + stats.failedPools)) * 100).toFixed(1)}%`
+                    : '—'
+                  }
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-surface-100">
+                <span>Pools per User</span>
+                <span className="font-semibold text-surface-900">
+                  {stats.totalUsers > 0
+                    ? ((stats.activePools + stats.completedPools + stats.failedPools) / stats.totalUsers).toFixed(1)
+                    : '—'
+                  }
+                </span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span>Total Reports</span>
+                <span className="font-semibold text-surface-900">{reports.length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reports Tab */}
+      {activeTab === 'reports' && (
+        <div className="space-y-4 animate-fade-in">
+          {reports.length === 0 ? (
+            <EmptyState
+              icon={<Flag size={28} />}
+              title="No reports"
+              description="No reports have been submitted yet."
+            />
+          ) : (
+            <>
+              {/* Pending Reports */}
+              {pendingReports.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-surface-900">
+                    Pending ({pendingReports.length})
+                  </h3>
+                  {pendingReports.map((report) => (
+                    <ReportCard
+                      key={report.id}
+                      report={report}
+                      expanded={expandedReport === report.id}
+                      onToggle={() => setExpandedReport(expandedReport === report.id ? null : report.id)}
+                      onResolve={(status, notes) => handleResolveReport(report.id, status, notes)}
+                      onSuspend={() => handleSuspendUser(report.reported_user_id)}
+                      actionLoading={actionLoading}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Resolved Reports */}
+              {resolvedReports.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-surface-500 mt-4">
+                    Resolved ({resolvedReports.length})
+                  </h3>
+                  {resolvedReports.slice(0, 10).map((report) => (
+                    <ReportCard
+                      key={report.id}
+                      report={report}
+                      expanded={expandedReport === report.id}
+                      onToggle={() => setExpandedReport(expandedReport === report.id ? null : report.id)}
+                      onResolve={(status, notes) => handleResolveReport(report.id, status, notes)}
+                      onSuspend={() => handleSuspendUser(report.reported_user_id)}
+                      actionLoading={actionLoading}
+                      resolved
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STAT CARD COMPONENT ────────────────────────────────────────
+
+function StatCard({ icon, label, value, color }: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: 'brand' | 'blue' | 'emerald' | 'red';
+}) {
+  const colorMap = {
+    brand: 'bg-brand-50 text-brand-600',
+    blue: 'bg-blue-50 text-blue-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    red: 'bg-red-50 text-red-600',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-surface-200 p-4">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-2 ${colorMap[color]}`}>
+        {icon}
+      </div>
+      <p className="text-2xl font-bold text-surface-900">{value}</p>
+      <p className="text-xs text-surface-500 font-medium">{label}</p>
+    </div>
+  );
+}
+
+// ─── REPORT CARD COMPONENT ──────────────────────────────────────
+
+function ReportCard({ report, expanded, onToggle, onResolve, onSuspend, actionLoading, resolved }: {
+  report: Report;
+  expanded: boolean;
+  onToggle: () => void;
+  onResolve: (status: 'resolved' | 'dismissed', notes?: string) => void;
+  onSuspend: () => void;
+  actionLoading: boolean;
+  resolved?: boolean;
+}) {
+  const [notes, setNotes] = useState('');
+
+  return (
+    <div className={`bg-white rounded-xl border ${resolved ? 'border-surface-100 opacity-70' : 'border-surface-200'} overflow-hidden`}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-50 transition-colors"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle size={14} className={resolved ? 'text-surface-400' : 'text-amber-500'} />
+            <span className="text-sm font-semibold text-surface-900 truncate">{report.reason}</span>
+          </div>
+          <div className="text-xs text-surface-500">
+            {report.reporter?.name || 'User'} reported {report.reported?.name || 'User'}
+            <span className="mx-1">·</span>
+            {new Date(report.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+            report.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+            report.status === 'resolved' ? 'bg-green-100 text-green-700' :
+            'bg-surface-100 text-surface-500'
+          }`}>
+            {report.status}
+          </span>
+          {expanded ? <ChevronUp size={16} className="text-surface-400" /> : <ChevronDown size={16} className="text-surface-400" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-surface-100 pt-3 space-y-3 animate-slide-down">
+          {report.description && (
+            <p className="text-sm text-surface-600 bg-surface-50 rounded-lg p-3">{report.description}</p>
+          )}
+          {report.admin_notes && (
+            <p className="text-sm text-surface-600 bg-blue-50 rounded-lg p-3">
+              <span className="font-semibold text-blue-700">Admin notes:</span> {report.admin_notes}
+            </p>
+          )}
+
+          {report.status === 'pending' && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-surface-500 mb-1" htmlFor={`notes-${report.id}`}>Admin Notes</label>
+                <textarea
+                  id={`notes-${report.id}`}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onResolve('resolved', notes || undefined)}
+                  disabled={actionLoading}
+                  className="flex-1 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors disabled:opacity-60"
+                >
+                  Resolve
+                </button>
+                <button
+                  onClick={() => onResolve('dismissed', notes || undefined)}
+                  disabled={actionLoading}
+                  className="flex-1 py-2 bg-surface-200 text-surface-700 rounded-lg text-sm font-semibold hover:bg-surface-300 transition-colors disabled:opacity-60"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={onSuspend}
+                  disabled={actionLoading}
+                  className="py-2 px-3 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center gap-1"
+                  aria-label="Suspend reported user"
+                >
+                  <Ban size={14} /> Suspend
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

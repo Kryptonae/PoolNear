@@ -3,7 +3,7 @@
 // Complete pool lifecycle: view, join, orderer, payment, delivery
 // ═══════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -11,15 +11,17 @@ import {
   joinPool, leavePool, volunteerAsOrderer,
   submitOrderProof, markPaymentSent, confirmPaymentReceived,
   markOrderDelivered, confirmReceipt, submitReport,
+  requestConnection, respondToConnection, getPoolConnections,
   type Pool, type PoolMember, type PoolOrder,
 } from '../services/pools';
+import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState } from '../components/ui';
-import { PLATFORMS, POOL_STATUS, type PoolStatusKey } from '../lib/constants';
+import { type PoolStatusKey } from '../lib/constants';
 import { formatDistance, haversineDistance } from '../lib/geo';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
   ArrowLeft, MapPin, Clock, Users, UserCheck, ShieldCheck,
-  Upload, CheckCircle2, Phone, MessageCircle, AlertTriangle, Flag,
+  Upload, CheckCircle2, Flag, Image,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -31,6 +33,7 @@ export function PoolDetailPage() {
   const [pool, setPool] = useState<Pool | null>(null);
   const [members, setMembers] = useState<PoolMember[]>([]);
   const [order, setOrder] = useState<PoolOrder | null>(null);
+  const [connections, setConnections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,9 +46,15 @@ export function PoolDetailPage() {
   const [proofOrderId, setProofOrderId] = useState('');
   const [proofOrderValue, setProofOrderValue] = useState('');
   const [proofDeliveryTime, setProofDeliveryTime] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  const proofFileRef = useRef<HTMLInputElement>(null);
+  const paymentFileRef = useRef<HTMLInputElement>(null);
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
@@ -60,6 +69,11 @@ export function PoolDetailPage() {
       setPool(poolData);
       setMembers(membersData);
       setOrder(orderData);
+      
+      if (profile?.id) {
+        const connectionsData = await getPoolConnections(id, profile.id);
+        setConnections(connectionsData);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -73,10 +87,8 @@ export function PoolDetailPage() {
   if (error || !pool) return <ErrorState message={error || 'Pool not found'} onRetry={fetchAll} />;
 
   const isMember = members.some((m) => m.user_id === profile?.id);
-  const isCreator = pool.creator_id === profile?.id;
   const isOrderer = pool.orderer_id === profile?.id;
   const myMembership = members.find((m) => m.user_id === profile?.id);
-  const remaining = Math.max(pool.minimum_order_value - pool.current_total, 0);
   const memberCount = members.length;
   const isFull = memberCount >= pool.max_members;
   const canJoin = !isMember && !isFull && (pool.status === 'waiting' || pool.status === 'ready');
@@ -138,13 +150,24 @@ export function PoolDetailPage() {
     }
     setActionLoading(true);
     try {
+      let proofImageUrl: string | undefined;
+
+      // Upload proof file if provided
+      if (proofFile && profile) {
+        const result = await uploadOrderProof(proofFile, profile.id, pool!.id, setUploadProgress);
+        proofImageUrl = result.url;
+      }
+
       await submitOrderProof(
         pool!.id, profile!.id, proofOrderId.trim(),
         parseFloat(proofOrderValue),
-        proofDeliveryTime || new Date(Date.now() + 30 * 60 * 1000).toISOString()
+        proofDeliveryTime || new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        proofImageUrl
       );
       toast.success('Order proof submitted!');
       setShowOrderProofModal(false);
+      setProofFile(null);
+      setUploadProgress(0);
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -156,8 +179,18 @@ export function PoolDetailPage() {
   async function handleMarkPaid() {
     setActionLoading(true);
     try {
-      await markPaymentSent(pool!.id, profile!.id);
+      let proofUrl: string | undefined;
+
+      // Upload payment proof if provided
+      if (paymentProofFile && profile) {
+        const result = await uploadPaymentProof(paymentProofFile, profile.id, pool!.id, setUploadProgress);
+        proofUrl = result.url;
+      }
+
+      await markPaymentSent(pool!.id, profile!.id, proofUrl);
       toast.success('Payment marked as sent');
+      setPaymentProofFile(null);
+      setUploadProgress(0);
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -219,6 +252,39 @@ export function PoolDetailPage() {
       toast.error((err as Error).message);
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function handleViewProof(path: string) {
+    try {
+      const url = await getSignedUrl(path);
+      if (url) {
+        window.open(url, '_blank');
+      } else {
+        toast.error('Could not load proof image');
+      }
+    } catch (err) {
+      toast.error('Could not load proof image');
+    }
+  }
+
+  async function handleRequestConnection(receiverId: string) {
+    try {
+      await requestConnection(profile!.id, receiverId, pool!.id);
+      toast.success('Connection request sent');
+      fetchAll();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
+
+  async function handleRespondConnection(connectionId: string, accept: boolean) {
+    try {
+      await respondToConnection(connectionId, accept);
+      toast.success(accept ? 'Connection accepted' : 'Connection rejected');
+      fetchAll();
+    } catch (err) {
+      toast.error((err as Error).message);
     }
   }
 
@@ -290,23 +356,71 @@ export function PoolDetailPage() {
                 <p className="text-xs text-surface-400">
                   {member.profiles?.successful_pools || 0} successful pools
                 </p>
+                {/* Connection UI */}
+                {isMember && member.user_id !== profile?.id && (isOrderer || member.user_id === pool.orderer_id) && (
+                  <div className="mt-2">
+                    {(() => {
+                      const connection = connections.find(c => 
+                        (c.requester_id === member.user_id && c.receiver_id === profile?.id) ||
+                        (c.requester_id === profile?.id && c.receiver_id === member.user_id)
+                      );
+                      
+                      if (!connection) {
+                        return (
+                          <button onClick={() => handleRequestConnection(member.user_id)} className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-full font-medium hover:bg-brand-100 transition-colors">
+                            Connect for Payment
+                          </button>
+                        );
+                      }
+                      
+                      if (connection.status === 'pending') {
+                        if (connection.receiver_id === profile?.id) {
+                          return (
+                            <div className="flex gap-2">
+                              <button onClick={() => handleRespondConnection(connection.id, true)} className="text-xs bg-brand-500 text-white px-2.5 py-1 rounded-full font-medium hover:bg-brand-600">Accept</button>
+                              <button onClick={() => handleRespondConnection(connection.id, false)} className="text-xs bg-red-100 text-red-600 px-2.5 py-1 rounded-full font-medium hover:bg-red-200">Reject</button>
+                            </div>
+                          );
+                        } else {
+                          return <span className="text-xs bg-surface-100 text-surface-500 px-2.5 py-1 rounded-full">Request Sent</span>;
+                        }
+                      }
+                      
+                      if (connection.status === 'accepted') {
+                        return <span className="text-xs font-mono bg-green-50 text-green-700 px-2 py-1 rounded-md">{member.profiles?.phone || 'No phone number'}</span>;
+                      }
+                      
+                      return <span className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full">Connection Rejected</span>;
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-surface-900">₹{member.contribution}</p>
               {/* Payment status for orderer view */}
               {isOrderer && member.user_id !== profile?.id && (
-                <div className="mt-1">
+                <div className="mt-1 flex flex-col items-end gap-1">
                   {member.payment_status === 'confirmed' ? (
                     <span className="text-xs text-green-600 font-medium">✓ Paid</span>
                   ) : member.payment_status === 'sent' ? (
-                    <button
-                      onClick={() => handleConfirmPayment(member.id)}
-                      className="text-xs text-brand-600 font-medium hover:underline"
-                      disabled={actionLoading}
-                    >
-                      Confirm Payment
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleConfirmPayment(member.id)}
+                        className="text-xs text-brand-600 font-medium hover:underline"
+                        disabled={actionLoading}
+                      >
+                        Confirm Payment
+                      </button>
+                      {member.payment_proof_url && (
+                        <button
+                          onClick={() => handleViewProof(member.payment_proof_url!)}
+                          className="text-[10px] text-surface-500 hover:text-surface-700 underline"
+                        >
+                          View Proof
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <span className="text-xs text-surface-400">Pending</span>
                   )}
@@ -347,6 +461,17 @@ export function PoolDetailPage() {
               <div className="col-span-2">
                 <span className="text-blue-400">Expected Delivery</span>
                 <p className="text-blue-800">{format(new Date(order.expected_delivery), 'PPp')}</p>
+              </div>
+            )}
+            {order.proof_image_url && (
+              <div className="col-span-2">
+                <span className="text-blue-400">Order Proof</span>
+                <button
+                  onClick={() => handleViewProof(order.proof_image_url!)}
+                  className="text-blue-700 underline text-xs flex items-center gap-1 mt-1 hover:text-blue-800 transition-colors"
+                >
+                  <Image size={12} /> View proof image
+                </button>
               </div>
             )}
           </div>
@@ -394,9 +519,31 @@ export function PoolDetailPage() {
 
         {/* Mark Payment Sent (non-orderer members) */}
         {isMember && !isOrderer && myMembership?.payment_status === 'pending' && (status === 'ordering' || status === 'order_placed') && (
-          <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] flex items-center justify-center gap-2">
-            <ShieldCheck size={18} /> I&apos;ve Paid
-          </button>
+          <div className="space-y-2">
+            {/* Optional payment proof upload */}
+            <div className="bg-surface-50 rounded-xl p-3 flex items-center gap-3">
+              <button
+                onClick={() => paymentFileRef.current?.click()}
+                className="text-xs text-brand-600 font-medium hover:underline flex items-center gap-1"
+              >
+                <Image size={14} />
+                {paymentProofFile ? paymentProofFile.name : 'Attach payment proof (optional)'}
+              </button>
+              <input
+                ref={paymentFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+              />
+            </div>
+            <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] flex items-center justify-center gap-2">
+              <ShieldCheck size={18} /> I&apos;ve Paid
+              {uploadProgress > 0 && uploadProgress < 100 && (
+                <span className="text-xs opacity-70">({uploadProgress}%)</span>
+              )}
+            </button>
+          </div>
         )}
 
         {/* Mark Delivered (orderer only) */}
@@ -432,14 +579,14 @@ export function PoolDetailPage() {
       <Modal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} title="Join Pool">
         <div className="space-y-4 mt-4">
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">What do you need?</label>
-            <input type="text" value={joinProduct} onChange={(e) => setJoinProduct(e.target.value)} placeholder="e.g. Snacks" className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="join-product">What do you need?</label>
+            <input id="join-product" type="text" value={joinProduct} onChange={(e) => setJoinProduct(e.target.value)} placeholder="e.g. Snacks" className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">Your contribution amount</label>
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="join-amount">Your contribution amount</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">₹</span>
-              <input type="number" value={joinAmount} onChange={(e) => setJoinAmount(e.target.value)} placeholder="30" min="1" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+              <input id="join-amount" type="number" value={joinAmount} onChange={(e) => setJoinAmount(e.target.value)} placeholder="30" min="1" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
             </div>
           </div>
           <button onClick={handleJoin} disabled={actionLoading} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60">
@@ -453,19 +600,49 @@ export function PoolDetailPage() {
       <Modal isOpen={showOrderProofModal} onClose={() => setShowOrderProofModal(false)} title="Submit Order Proof">
         <div className="space-y-4 mt-4">
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">External Order ID</label>
-            <input type="text" value={proofOrderId} onChange={(e) => setProofOrderId(e.target.value)} placeholder="Order #12345" className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="proof-order-id">External Order ID</label>
+            <input id="proof-order-id" type="text" value={proofOrderId} onChange={(e) => setProofOrderId(e.target.value)} placeholder="Order #12345" className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">Total Order Value</label>
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="proof-order-value">Total Order Value</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">₹</span>
-              <input type="number" value={proofOrderValue} onChange={(e) => setProofOrderValue(e.target.value)} placeholder="105" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+              <input id="proof-order-value" type="number" value={proofOrderValue} onChange={(e) => setProofOrderValue(e.target.value)} placeholder="105" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">Expected Delivery Time</label>
-            <input type="datetime-local" value={proofDeliveryTime} onChange={(e) => setProofDeliveryTime(e.target.value)} className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="proof-delivery">Expected Delivery Time</label>
+            <input id="proof-delivery" type="datetime-local" value={proofDeliveryTime} onChange={(e) => setProofDeliveryTime(e.target.value)} className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+          </div>
+          {/* File Upload */}
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-1.5">Order Screenshot (optional)</label>
+            <button
+              onClick={() => proofFileRef.current?.click()}
+              className="w-full py-3 border-2 border-dashed border-surface-300 rounded-xl text-sm text-surface-500 hover:border-brand-400 hover:text-brand-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <Image size={16} />
+              {proofFile ? proofFile.name : 'Choose file...'}
+            </button>
+            <input
+              ref={proofFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+            />
+            {proofFile && (
+              <p className="text-xs text-surface-400 mt-1">
+                {(proofFile.size / 1024).toFixed(0)} KB · {proofFile.type}
+              </p>
+            )}
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mt-2">
+                <div className="progress-bar">
+                  <div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            )}
           </div>
           <button onClick={handleSubmitProof} disabled={actionLoading} className="w-full py-3.5 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 transition-colors active:scale-[0.98] disabled:opacity-60">
             {actionLoading ? 'Submitting...' : 'Submit Proof'}
@@ -487,8 +664,8 @@ export function PoolDetailPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5">Additional details (optional)</label>
-            <textarea value={reportDescription} onChange={(e) => setReportDescription(e.target.value)} placeholder="Describe what happened..." rows={3} className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500 resize-none" />
+            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="report-description">Additional details (optional)</label>
+            <textarea id="report-description" value={reportDescription} onChange={(e) => setReportDescription(e.target.value)} placeholder="Describe what happened..." rows={3} className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500 resize-none" />
           </div>
           <button onClick={handleReport} disabled={actionLoading} className="w-full py-3.5 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors active:scale-[0.98] disabled:opacity-60">
             {actionLoading ? 'Submitting...' : 'Submit Report'}
