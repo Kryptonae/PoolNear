@@ -76,6 +76,7 @@ export interface PoolMember {
   receipt_status: string;
   can_place_order: boolean;
   payment_proof_url: string | null;
+  destination?: string | null;
   joined_at: string;
   profiles?: {
     id: string;
@@ -102,9 +103,7 @@ export interface PoolOrder {
 }
 
 export interface CreatePoolInput {
-  product_description: string;
-  amount: number;
-  quantity: number;
+  items: { name: string; unit_price: number; quantity: number }[];
   platform: PlatformKey;
   platform_other?: string;
   minimum_order_value: number;
@@ -173,8 +172,19 @@ export async function getPoolMembers(poolId: string): Promise<PoolMember[]> {
   const membersWithProfiles = await Promise.all(members.map(async (member) => {
     const { data: profileData } = await supabase.rpc('get_public_profile', { p_user_id: member.user_id });
     const profile = profileData?.[0];
+    
+    // Fetch member's specific receiving location from requirements
+    const { data: reqData } = await supabase
+      .from('requirements')
+      .select('destination')
+      .eq('pool_id', poolId)
+      .eq('user_id', member.user_id)
+      .limit(1)
+      .maybeSingle();
+
     return {
       ...member,
+      destination: reqData?.destination || null,
       profiles: profile ? {
         id: profile.id,
         name: profile.name,
@@ -207,10 +217,11 @@ export async function getPoolOrder(poolId: string): Promise<PoolOrder | null> {
  * Create a new pool with the user's requirement as the first member.
  */
 export async function createPool(input: CreatePoolInput, _userId: string) {
+  const totalContribution = input.items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+
   const { data, error } = await supabase.rpc('create_pool_atomic', {
-    p_product_description: input.product_description,
-    p_amount: input.amount,
-    p_quantity: input.quantity,
+    p_items: input.items,
+    p_contribution: totalContribution,
     p_platform: input.platform,
     p_platform_other: input.platform_other || null,
     p_minimum_order_value: input.minimum_order_value,
@@ -234,15 +245,14 @@ export async function createPool(input: CreatePoolInput, _userId: string) {
 export async function joinPool(
   poolId: string,
   _userId: string,
-  contribution: number,
-  productDescription: string,
-  requirementId?: string
+  items: { name: string; unit_price: number; quantity: number }[]
 ) {
+  const totalContribution = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+
   const { error } = await supabase.rpc('join_pool_atomic', {
     p_pool_id: poolId,
-    p_contribution: contribution,
-    p_product_description: productDescription,
-    p_requirement_id: requirementId || null,
+    p_items: items,
+    p_contribution: totalContribution,
   });
 
   if (error) throw new Error(error.message);
@@ -314,10 +324,29 @@ export async function confirmPaymentReceived(_poolId: string, memberId: string) 
 }
 
 /**
+ * Reject payment claim (by the orderer for a specific member).
+ */
+export async function rejectPayment(memberId: string) {
+  const { error } = await supabase.rpc('reject_payment_atomic', { p_member_id: memberId });
+  if (error) throw new Error(error.message);
+}
+
+/**
  * Mark delivery received by orderer.
  */
 export async function markOrderDelivered(poolId: string) {
   const { error } = await supabase.rpc('mark_order_delivered_atomic', { p_pool_id: poolId });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Update receiving location.
+ */
+export async function updateReceivingLocation(poolId: string, destination: string) {
+  const { error } = await supabase.rpc('update_receiving_location_atomic', {
+    p_pool_id: poolId,
+    p_destination: destination,
+  });
   if (error) throw new Error(error.message);
 }
 

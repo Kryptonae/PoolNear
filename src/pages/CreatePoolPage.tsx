@@ -8,25 +8,21 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { createPool, getNearbyPools, joinPool } from '../services/pools';
 import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
-import { PLATFORM_LIST, TIME_OPTIONS, RADIUS_OPTIONS, DESTINATION_PRESETS, DEFAULT_MIN_ORDER, DEFAULT_MAX_MEMBERS, type PlatformKey } from '../lib/constants';
-import { ArrowLeft, Package, IndianRupee, Clock, MapPin, Users, ChevronRight, X } from 'lucide-react';
+import { PLATFORM_LIST, TIME_OPTIONS, RADIUS_OPTIONS, DEFAULT_MIN_ORDER, DEFAULT_MAX_MEMBERS, type PlatformKey } from '../lib/constants';
+import { ArrowLeft, Package, Clock, MapPin, Users, ChevronRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function CreatePoolPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
 
-  const [productDescription, setProductDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState('1');
+  const [items, setItems] = useState([{ name: '', unit_price: '', quantity: '1' }]);
   const [platform, setPlatform] = useState<PlatformKey | ''>('');
   const [platformOther, setPlatformOther] = useState('');
   const [minOrderValue, setMinOrderValue] = useState(DEFAULT_MIN_ORDER.toString());
   const [timeOption, setTimeOption] = useState('1hr');
   const [customMinutes, setCustomMinutes] = useState('10');
   const [maxDistance, setMaxDistance] = useState(500);
-  const [destination, setDestination] = useState('');
-  const [customDestination, setCustomDestination] = useState('');
   const [maxMembers, setMaxMembers] = useState(DEFAULT_MAX_MEMBERS);
   const [submitting, setSubmitting] = useState(false);
   const [matches, setMatches] = useState<MatchCandidate[]>([]);
@@ -39,24 +35,19 @@ export function CreatePoolPage() {
     if (submitting) return;
 
     // Validation
-    if (!productDescription.trim()) {
-      toast.error('What do you need? Please describe your item.');
+    const invalidItem = items.find(i => !i.name.trim() || !i.unit_price || parseFloat(i.unit_price) <= 0);
+    if (invalidItem) {
+      toast.error('Please enter valid details for all items (name and price > 0).');
       return;
     }
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error('Please enter a valid amount.');
-      return;
-    }
+    const parsedItems = items.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
+    const totalAmount = parsedItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
     if (!platform) {
       toast.error('Please select an ordering platform.');
       return;
     }
     if (platform === 'other' && !platformOther.trim()) {
       toast.error('Please enter the platform name.');
-      return;
-    }
-    if (!destination && !customDestination.trim()) {
-      toast.error('Please select a receiving location.');
       return;
     }
     if (!hasLocation) {
@@ -87,7 +78,7 @@ export function CreatePoolPage() {
       const nearby = await getNearbyPools(profile!.latitude!, profile!.longitude!, maxDistance, platform as PlatformKey, 'waiting');
       const foundMatches = findBestMatches(nearby, {
         platform: platform as PlatformKey,
-        amount: parseFloat(amount),
+        amount: totalAmount,
         latitude: profile!.latitude!,
         longitude: profile!.longitude!,
         maximumDistance: maxDistance,
@@ -118,15 +109,14 @@ export function CreatePoolPage() {
       const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption)!;
       expiresAt = selectedTime.getExpiry();
     }
-    const finalDestination = destination === 'custom' ? customDestination : destination;
+    const finalDestination = 'To be decided';
 
     setSubmitting(true);
     try {
+      const parsedItems = items.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
       const pool = await createPool(
         {
-          product_description: productDescription.trim(),
-          amount: parseFloat(amount),
-          quantity: parseInt(quantity) || 1,
+          items: parsedItems,
           platform: platform as PlatformKey,
           platform_other: platform === 'other' ? platformOther.trim() : undefined,
           minimum_order_value: parseFloat(minOrderValue) || DEFAULT_MIN_ORDER,
@@ -141,7 +131,7 @@ export function CreatePoolPage() {
         profile!.id
       );
 
-      toast.success('Pool created! Waiting for nearby matches.');
+      toast.success('Group order started! Waiting for nearby matches.');
       navigate(`/pool/${pool.id}`);
     } catch (err) {
       toast.error((err as Error).message || 'Failed to create pool');
@@ -153,13 +143,13 @@ export function CreatePoolPage() {
   async function handleJoinMatch(poolId: string) {
     setSubmitting(true);
     try {
+      const parsedItems = items.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
       await joinPool(
         poolId,
         profile!.id,
-        parseFloat(amount),
-        productDescription.trim()
+        parsedItems
       );
-      toast.success('Successfully joined pool!');
+      toast.success('Successfully added your order!');
       navigate(`/pool/${poolId}`);
     } catch (err) {
       toast.error((err as Error).message || 'Failed to join pool');
@@ -180,88 +170,131 @@ export function CreatePoolPage() {
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1 className="text-xl font-bold text-surface-900">Create Requirement</h1>
-          <p className="text-sm text-surface-500">Find people nearby to pool with</p>
+          <h1 className="text-xl font-bold text-surface-900">Start a Group Order</h1>
+          <p className="text-sm text-surface-500">Find people nearby to order with</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* What do you need? */}
-        <div className="space-y-2">
+        {/* Dynamic Items List */}
+        <div className="space-y-4">
           <label className="flex items-center gap-2 text-sm font-semibold text-surface-700">
             <Package size={16} />
-            What do you need?
+            Your Items
           </label>
-          <input
-            type="text"
-            value={productDescription}
-            onChange={(e) => setProductDescription(e.target.value)}
-            placeholder="e.g. Blanket, Shampoo, Snacks..."
-            className="w-full px-4 py-3 bg-white border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
-            required
-          />
-        </div>
+          
+          {items.map((item, index) => (
+            <div key={index} className="p-4 bg-surface-50 border border-surface-200 rounded-xl space-y-3 relative">
+              {items.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setItems(items.filter((_, i) => i !== index))}
+                  className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              )}
+              
+              <div className="pr-8">
+                <input
+                  type="text"
+                  value={item.name}
+                  onChange={(e) => {
+                    const newItems = [...items];
+                    newItems[index].name = e.target.value;
+                    setItems(newItems);
+                  }}
+                  placeholder="e.g. Biscuit, Snacks..."
+                  className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  required
+                />
+              </div>
 
-        {/* Amount & Quantity */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-semibold text-surface-700">
-              <IndianRupee size={16} />
-              Amount
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 font-medium">₹</span>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="25"
-                min="1"
-                className="w-full pl-8 pr-4 py-3 bg-white border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
-                required
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 font-medium text-sm">₹</span>
+                  <input
+                    type="number"
+                    value={item.unit_price}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[index].unit_price = e.target.value;
+                      setItems(newItems);
+                    }}
+                    placeholder="Unit Price"
+                    min="1"
+                    className="w-full pl-8 pr-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                    required
+                  />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = parseInt(item.quantity) || 1;
+                      const newItems = [...items];
+                      newItems[index].quantity = Math.max(1, current - 1).toString();
+                      setItems(newItems);
+                    }}
+                    className="w-10 h-[42px] rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg bg-white"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={item.quantity}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val.length <= 2) {
+                        const newItems = [...items];
+                        newItems[index].quantity = val;
+                        setItems(newItems);
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(item.quantity);
+                      const newItems = [...items];
+                      if (isNaN(parsed) || parsed < 1) newItems[index].quantity = '1';
+                      setItems(newItems);
+                    }}
+                    className="flex-1 min-w-0 h-[42px] px-2 text-center bg-white border border-surface-200 rounded-xl text-surface-900 font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = parseInt(item.quantity) || 1;
+                      if (current < 99) {
+                        const newItems = [...items];
+                        newItems[index].quantity = (current + 1).toString();
+                        setItems(newItems);
+                      }
+                    }}
+                    className="w-10 h-[42px] rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg bg-white"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-surface-700">Quantity</label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const current = parseInt(quantity) || 1;
-                  setQuantity(Math.max(1, current - 1).toString());
-                }}
-                className="w-10 h-11 rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg"
-              >
-                −
-              </button>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={quantity}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  if (val.length <= 2) setQuantity(val);
-                }}
-                onBlur={() => {
-                  const parsed = parseInt(quantity);
-                  if (isNaN(parsed) || parsed < 1) setQuantity('1');
-                }}
-                className="flex-1 text-center py-3 bg-white border border-surface-200 rounded-xl text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const current = parseInt(quantity) || 1;
-                  setQuantity(Math.min(99, current + 1).toString());
-                }}
-                className="w-10 h-11 rounded-xl border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors text-lg"
-              >
-                +
-              </button>
-            </div>
+          ))}
+          
+          <button
+            type="button"
+            onClick={() => setItems([...items, { name: '', unit_price: '', quantity: '1' }])}
+            className="w-full py-2.5 rounded-xl border-2 border-dashed border-surface-200 text-surface-500 font-medium text-sm hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all flex items-center justify-center gap-2"
+          >
+            + Add Another Item
+          </button>
+          
+          <div className="flex justify-between items-center py-2 px-1 border-b border-surface-100">
+            <span className="text-sm font-medium text-surface-600">Your Order Total:</span>
+            <span className="text-lg font-bold text-brand-600">
+              ₹{items.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0)}
+            </span>
           </div>
         </div>
 
@@ -386,39 +419,6 @@ export function CreatePoolPage() {
           </div>
         </div>
 
-        {/* Destination */}
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-surface-700">Common receiving location</label>
-          <div className="flex flex-wrap gap-2">
-            {DESTINATION_PRESETS.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => { setDestination(d); setCustomDestination(''); }}
-                className={`chip ${destination === d ? 'active' : ''}`}
-              >
-                {d}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setDestination('custom')}
-              className={`chip ${destination === 'custom' ? 'active' : ''}`}
-            >
-              Custom
-            </button>
-          </div>
-          {destination === 'custom' && (
-            <input
-              type="text"
-              value={customDestination}
-              onChange={(e) => setCustomDestination(e.target.value)}
-              placeholder="Enter public location"
-              className="w-full px-4 py-3 bg-white border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
-            />
-          )}
-        </div>
-
         {/* Max Members */}
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-sm font-semibold text-surface-700">
@@ -451,18 +451,10 @@ export function CreatePoolPage() {
         <button
           type="submit"
           disabled={submitting || !hasLocation}
-          className="w-full py-3.5 bg-gradient-to-r from-brand-500 to-brand-600 text-white rounded-xl font-semibold hover:from-brand-600 hover:to-brand-700 transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-brand-500/20"
+          className="w-full flex items-center justify-center gap-2 bg-brand-500 text-white font-semibold rounded-xl py-4 hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-70 disabled:hover:bg-brand-500 disabled:active:scale-100 shadow-lg shadow-brand-500/20"
         >
-          {submitting ? (
-            <>
-              <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              Creating Pool...
-            </>
-          ) : (
-            <>
-              Create Pool <ChevronRight size={18} />
-            </>
-          )}
+          {submitting ? 'Starting...' : 'Start Group Order'}
+          <ChevronRight size={20} />
         </button>
 
         {/* Disclaimer */}
@@ -477,8 +469,10 @@ export function CreatePoolPage() {
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col animate-slide-up">
             <div className="p-5 border-b border-surface-100 flex justify-between items-center">
               <div>
-                <h2 className="text-lg font-bold text-surface-900">Matches Found!</h2>
-                <p className="text-sm text-surface-500">We found existing pools nearby.</p>
+                <h3 className="font-bold text-surface-900 mb-1">Group Orders Found!</h3>
+                <p className="text-sm text-surface-500 mb-4">
+                  We found {matches.length} active order{matches.length === 1 ? '' : 's'} matching your requirement. Joining an existing order is faster!
+                </p>
               </div>
               <button onClick={() => setShowMatchModal(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
                 <X size={20} />

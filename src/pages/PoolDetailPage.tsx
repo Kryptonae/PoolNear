@@ -9,8 +9,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   getPoolById, getPoolMembers, getPoolOrder,
   joinPool, leavePool, volunteerAsOrderer,
-  submitOrderProof, markPaymentSent, confirmPaymentReceived,
-  markOrderDelivered, confirmReceipt, submitReport,
+  submitOrderProof, markPaymentSent, confirmPaymentReceived, rejectPayment,
+  markOrderDelivered, confirmReceipt, submitReport, updateReceivingLocation,
   requestConnection, respondToConnection, getPoolConnections,
   type Pool, type PoolMember, type PoolOrder,
 } from '../services/pools';
@@ -44,13 +44,13 @@ export function PoolDetailPage() {
   const [showOrderProofModal, setShowOrderProofModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
-  const [joinAmount, setJoinAmount] = useState('');
-  const [joinProduct, setJoinProduct] = useState('');
+  const [joinItems, setJoinItems] = useState([{ name: '', unit_price: '', quantity: '1' }]);
   const [proofOrderId, setProofOrderId] = useState('');
   const [proofOrderValue, setProofOrderValue] = useState('');
   const [proofDeliveryTime, setProofDeliveryTime] = useState('');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [myDestination, setMyDestination] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
@@ -176,19 +176,23 @@ export function PoolDetailPage() {
   // ─── ACTIONS ────────────────────────────────────────────────────
 
   async function handleJoin() {
-    const amount = parseFloat(joinAmount);
-    if (!joinAmount || amount <= 0 || !joinProduct.trim()) {
-      toast.error('Please fill in all fields');
+    const invalidItem = joinItems.find(i => !i.name.trim() || !i.unit_price || parseFloat(i.unit_price) <= 0);
+    if (invalidItem) {
+      toast.error('Please enter valid details for all items (name and price > 0).');
       return;
     }
+    
+    const parsedItems = joinItems.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
+    const amount = parsedItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+
     if (remainingRequired > 0 && amount < remainingRequired) {
       toast.error(`Minimum contribution required: ₹${remainingRequired}`);
       return;
     }
     setActionLoading(true);
     try {
-      await joinPool(pool!.id, profile!.id, parseFloat(joinAmount), joinProduct.trim());
-      toast.success('You joined this pool!');
+      await joinPool(pool!.id, profile!.id, parsedItems);
+      toast.success('You joined this group order!');
       setShowJoinModal(false);
       fetchAll();
     } catch (err) {
@@ -203,7 +207,7 @@ export function PoolDetailPage() {
     setActionLoading(true);
     try {
       await leavePool(pool!.id, profile!.id);
-      toast.success('You left the pool');
+      toast.success('You left the group order');
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -294,11 +298,38 @@ export function PoolDetailPage() {
     }
   }
 
+  async function handleRejectPayment(memberId: string) {
+    setActionLoading(true);
+    try {
+      await rejectPayment(memberId);
+      toast.success('Payment rejected');
+      fetchAll();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleMarkDelivered() {
     setActionLoading(true);
     try {
       await markOrderDelivered(pool!.id);
       toast.success('Marked as delivered');
+      fetchAll();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSaveDestination() {
+    if (!myDestination.trim()) return;
+    setActionLoading(true);
+    try {
+      await updateReceivingLocation(pool!.id, myDestination.trim());
+      toast.success('Receiving location saved');
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -430,15 +461,16 @@ export function PoolDetailPage() {
                 {(member.profiles?.name || 'U')[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-surface-900 truncate">
+                <p className="text-sm font-medium text-surface-900 flex items-center gap-2">
                   {member.profiles?.name || 'User'}
-                  {member.user_id === pool.orderer_id && (
-                    <span className="ml-1.5 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Orderer</span>
-                  )}
-                  {member.user_id === profile?.id && (
-                    <span className="ml-1.5 text-xs bg-surface-100 text-surface-500 px-1.5 py-0.5 rounded-full">You</span>
-                  )}
+                  {member.user_id === profile?.id && <span className="text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">You</span>}
+                  {member.user_id === pool.orderer_id && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Orderer</span>}
                 </p>
+                {member.destination && member.destination !== 'To be decided' && (
+                  <p className="text-[10px] text-surface-500 mt-0.5 flex items-center gap-1">
+                    <MapPin size={10} /> {member.destination}
+                  </p>
+                )}
                 <p className="text-xs text-surface-400">
                   {member.profiles?.successful_pools || 0} successful pools
                 </p>
@@ -516,21 +548,31 @@ export function PoolDetailPage() {
                 <div>
                   <p className="text-sm font-medium text-surface-900">{member.profiles?.name || 'User'}</p>
                   <p className="text-xs font-semibold text-surface-900 mt-0.5">₹{member.contribution}</p>
+                  {member.destination && member.destination !== 'To be decided' && (
+                    <p className="text-[10px] text-surface-500 mt-1 flex items-center gap-1">
+                      <MapPin size={10} /> {member.destination}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   {member.payment_status === 'confirmed' ? (
                     <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-semibold flex items-center gap-1"><CheckCircle2 size={12}/> Confirmed</span>
                   ) : member.payment_status === 'sent' ? (
-                    <>
-                      <button onClick={() => handleConfirmPayment(member.id)} disabled={actionLoading} className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-full font-medium hover:bg-brand-600 active:scale-95 transition-all shadow-sm">
-                        Confirm Payment
-                      </button>
+                    <div className="flex flex-col gap-2 items-end">
+                      <div className="flex gap-2">
+                        <button onClick={() => handleConfirmPayment(member.id)} disabled={actionLoading} className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-full font-medium hover:bg-brand-600 active:scale-95 transition-all shadow-sm">
+                          Confirm Payment
+                        </button>
+                        <button onClick={() => handleRejectPayment(member.id)} disabled={actionLoading} className="text-xs bg-white text-red-600 border border-red-200 px-3 py-1.5 rounded-full font-medium hover:bg-red-50 active:scale-95 transition-all shadow-sm">
+                          Reject Payment
+                        </button>
+                      </div>
                       {member.payment_proof_url && (
                         <button onClick={() => handleViewProof(member.payment_proof_url!)} className="text-[10px] text-surface-500 hover:text-surface-700 underline flex items-center gap-1">
                           <Image size={10} /> View Proof
                         </button>
                       )}
-                    </>
+                    </div>
                   ) : (
                     <span className="text-xs bg-surface-200 text-surface-600 px-2.5 py-1 rounded-full font-medium">Pending</span>
                   )}
@@ -561,9 +603,8 @@ export function PoolDetailPage() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm font-medium text-surface-700 text-center">Connect with the orderer before making payment.</p>
                     <button onClick={() => handleRequestConnection(pool.orderer_id!)} className="w-full py-3 bg-brand-100 text-brand-700 rounded-xl font-bold hover:bg-brand-200 transition-colors shadow-sm border border-brand-200">
-                      Connect with Orderer
+                      Connect with orderer for payment
                     </button>
                   </>
                 )}
@@ -577,29 +618,51 @@ export function PoolDetailPage() {
                 <Clock size={18} /> Waiting for confirmation
               </div>
             ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between bg-green-50 px-3 py-2 rounded-lg border border-green-200 mb-2">
-                  <span className="text-xs font-semibold text-green-700">Connected</span>
-                  <span className="text-xs font-mono font-medium text-green-800">
-                    {connections.find(c => c.status === 'accepted' && (c.requester_id === pool.orderer_id || c.receiver_id === pool.orderer_id))?.contact_phone || 'Phone hidden'}
-                  </span>
-                </div>
-                <div className="bg-surface-50 rounded-xl p-3 flex items-center justify-between border border-surface-100">
-                  <span className="text-xs text-surface-600 font-medium flex items-center gap-2">
-                    <Image size={14} className="text-surface-400" />
-                    {paymentProofFile ? paymentProofFile.name : 'Proof (optional)'}
-                  </span>
-                  <button onClick={() => paymentFileRef.current?.click()} className="text-xs text-brand-600 font-semibold hover:underline">
-                    {paymentProofFile ? 'Change' : 'Attach'}
-                  </button>
-                  <input ref={paymentFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)} />
-                </div>
-                <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] shadow-sm flex items-center justify-center gap-2">
-                  <ShieldCheck size={18} /> I've Paid
-                  {uploadProgress > 0 && uploadProgress < 100 && (
-                    <span className="text-xs opacity-70">({uploadProgress}%)</span>
-                  )}
-                </button>
+              <div className="space-y-4">
+                {(!myMembership.destination || myMembership.destination === 'To be decided') ? (
+                  <div className="bg-white border border-surface-200 rounded-xl p-4 space-y-3">
+                    <div className="text-sm font-semibold text-surface-900">Choose Receiving Location</div>
+                    <p className="text-xs text-surface-500">Now that you're connected with the orderer, choose where you'll receive your items.</p>
+                    <input 
+                      type="text" 
+                      value={myDestination} 
+                      onChange={e => setMyDestination(e.target.value)} 
+                      placeholder="e.g. Tower A Lobby" 
+                      className="w-full px-4 py-3 bg-white border border-surface-200 rounded-xl text-sm placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" 
+                    />
+                    <button onClick={handleSaveDestination} disabled={actionLoading || !myDestination.trim()} className="w-full py-2.5 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 transition-colors">
+                      Save Location
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 text-center space-y-2">
+                      <div className="text-sm font-semibold text-brand-900">Payment contact</div>
+                      <p className="text-xs text-brand-700">Contact the orderer on this number to make your payment.</p>
+                      <div className="text-xl font-mono font-bold text-brand-900 py-1">
+                        {connections.find(c => c.status === 'accepted' && (c.requester_id === pool.orderer_id || c.receiver_id === pool.orderer_id))?.contact_phone || 'Phone hidden'}
+                      </div>
+                      <p className="text-xs text-brand-700 font-medium pt-1">After you've made the payment, click "I've Paid" below.</p>
+                    </div>
+                    
+                    <div className="bg-surface-50 rounded-xl p-3 flex items-center justify-between border border-surface-100">
+                      <span className="text-xs text-surface-600 font-medium flex items-center gap-2">
+                        <Image size={14} className="text-surface-400" />
+                        {paymentProofFile ? paymentProofFile.name : 'Proof (optional)'}
+                      </span>
+                      <button onClick={() => paymentFileRef.current?.click()} className="text-xs text-brand-600 font-semibold hover:underline">
+                        {paymentProofFile ? 'Change' : 'Attach'}
+                      </button>
+                      <input ref={paymentFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)} />
+                    </div>
+                    <button onClick={handleMarkPaid} disabled={actionLoading} className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] shadow-sm flex items-center justify-center gap-2">
+                      <ShieldCheck size={18} /> I&apos;ve Paid
+                      {uploadProgress > 0 && uploadProgress < 100 && (
+                        <span className="text-xs opacity-70">({uploadProgress}%)</span>
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -660,15 +723,15 @@ export function PoolDetailPage() {
       <div className="space-y-2">
         {/* Join */}
         {canJoin && (
-          <button onClick={() => setShowJoinModal(true)} className="w-full py-3.5 bg-gradient-to-r from-brand-500 to-brand-600 text-white rounded-xl font-semibold hover:from-brand-600 hover:to-brand-700 transition-all active:scale-[0.98] shadow-lg shadow-brand-500/20">
-            Join Pool
+          <button onClick={() => setShowJoinModal(true)} className="w-full py-4 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] shadow-lg shadow-brand-500/20 text-lg">
+            Add My Order
           </button>
         )}
 
         {/* Leave */}
         {isMember && (status === 'waiting' || status === 'ready') && (
-          <button onClick={handleLeave} disabled={actionLoading} className="w-full py-3 border border-red-200 text-red-600 rounded-xl font-medium hover:bg-red-50 transition-colors">
-            Leave Pool
+          <button onClick={handleLeave} disabled={actionLoading} className="w-full py-3.5 border border-red-200 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-colors active:scale-[0.98]">
+            Leave Group Order
           </button>
         )}
 
@@ -718,42 +781,156 @@ export function PoolDetailPage() {
       {/* ─── MODALS ────────────────────────────────────────────────────── */}
 
       {/* Join Modal */}
-      <Modal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} title="Join Pool">
+      <Modal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} title="Add My Order">
         <div className="space-y-4 mt-4">
-          <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="join-product">What do you need?</label>
-            <input id="join-product" type="text" value={joinProduct} onChange={(e) => setJoinProduct(e.target.value)} placeholder="e.g. Snacks" className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="join-amount">Your contribution amount</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">₹</span>
-              <input id="join-amount" type="number" value={joinAmount} onChange={(e) => setJoinAmount(e.target.value)} placeholder="30" min="1" className="w-full pl-8 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" />
+          <div className="space-y-3">
+            {joinItems.map((item, index) => (
+              <div key={index} className="p-3 bg-surface-50 border border-surface-200 rounded-xl space-y-3 relative">
+                {joinItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setJoinItems(joinItems.filter((_, i) => i !== index))}
+                    className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <span className="text-lg font-bold leading-none">&times;</span>
+                  </button>
+                )}
+                
+                <div className="pr-8">
+                  <input
+                    type="text"
+                    value={item.name}
+                    onChange={(e) => {
+                      const newItems = [...joinItems];
+                      newItems[index].name = e.target.value;
+                      setJoinItems(newItems);
+                    }}
+                    placeholder="e.g. Biscuit, Snacks..."
+                    className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">₹</span>
+                    <input
+                      type="number"
+                      value={item.unit_price}
+                      onChange={(e) => {
+                        const newItems = [...joinItems];
+                        newItems[index].unit_price = e.target.value;
+                        setJoinItems(newItems);
+                      }}
+                      placeholder="Price"
+                      min="1"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = parseInt(item.quantity) || 1;
+                        const newItems = [...joinItems];
+                        newItems[index].quantity = Math.max(1, current - 1).toString();
+                        setJoinItems(newItems);
+                      }}
+                      className="w-8 h-[38px] rounded-lg border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors bg-white"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={item.quantity}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        if (val.length <= 2) {
+                          const newItems = [...joinItems];
+                          newItems[index].quantity = val;
+                          setJoinItems(newItems);
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = parseInt(item.quantity);
+                        const newItems = [...joinItems];
+                        if (isNaN(parsed) || parsed < 1) newItems[index].quantity = '1';
+                        setJoinItems(newItems);
+                      }}
+                      className="flex-1 min-w-0 h-[38px] px-1 text-center bg-white border border-surface-200 rounded-lg text-surface-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = parseInt(item.quantity) || 1;
+                        if (current < 99) {
+                          const newItems = [...joinItems];
+                          newItems[index].quantity = (current + 1).toString();
+                          setJoinItems(newItems);
+                        }
+                      }}
+                      className="w-8 h-[38px] rounded-lg border border-surface-200 flex items-center justify-center text-surface-600 hover:bg-surface-50 transition-colors bg-white"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            <button
+              type="button"
+              onClick={() => setJoinItems([...joinItems, { name: '', unit_price: '', quantity: '1' }])}
+              className="w-full py-2 rounded-xl border-2 border-dashed border-surface-200 text-surface-500 font-medium text-sm hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all"
+            >
+              + Add Another Item
+            </button>
+            
+            <div className="flex justify-between items-center py-2 px-1 border-b border-surface-100">
+              <span className="text-sm font-medium text-surface-600">Your Order Total:</span>
+              <span className="text-lg font-bold text-brand-600">
+                ₹{joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0)}
+              </span>
             </div>
+            
             {remainingRequired > 0 && (
               <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 font-medium">
                 <div className="flex justify-between items-center mb-1">
-                  <span>Minimum Order</span>
+                  <span>Minimum Order Needed</span>
                   <span className="font-semibold">₹{pool.minimum_order_value}</span>
                 </div>
                 <div className="flex justify-between items-center mb-1">
-                  <span>Current Total</span>
+                  <span>Order Total</span>
                   <span className="font-semibold">₹{pool.current_total || 0}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-blue-200 mt-1">
                   <span>Still Needed</span>
                   <span className="font-bold">₹{remainingRequired}</span>
                 </div>
-                {parseFloat(joinAmount || '0') > 0 && parseFloat(joinAmount || '0') < remainingRequired && (
-                  <p className="mt-2 text-red-600 font-semibold bg-red-50 p-2 rounded text-center">
-                    Add at least ₹{remainingRequired} to join this pool.
-                  </p>
-                )}
+                {(() => {
+                  const currentTotalAmount = joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0);
+                  if (currentTotalAmount > 0 && currentTotalAmount < remainingRequired) {
+                    return (
+                      <p className="mt-2 text-red-600 font-semibold bg-red-50 p-2 rounded text-center">
+                        Add at least ₹{remainingRequired} to confirm.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             )}
           </div>
-          <button onClick={handleJoin} disabled={actionLoading || (remainingRequired > 0 && parseFloat(joinAmount || '0') < remainingRequired)} className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed">
-            {actionLoading ? 'Joining...' : 'Confirm & Join'}
+          
+          <button 
+            onClick={handleJoin} 
+            disabled={actionLoading || (remainingRequired > 0 && joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0) < remainingRequired)} 
+            className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {actionLoading ? 'Adding...' : 'Confirm & Add'}
           </button>
           <p className="text-xs text-surface-400 text-center">This is a commitment. You are not transferring money to PoolNear.</p>
         </div>
