@@ -12,6 +12,7 @@ import {
   submitOrderProof, markPaymentSent, confirmPaymentReceived, rejectPayment,
   markOrderDelivered, confirmReceipt, submitReport, updateReceivingLocation,
   requestConnection, respondToConnection, getPoolConnections,
+  updateMyPoolOrder, getMyRequirements,
   type Pool, type PoolMember, type PoolOrder,
 } from '../services/pools';
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
@@ -44,6 +45,7 @@ export function PoolDetailPage() {
   const [showOrderProofModal, setShowOrderProofModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [joinItems, setJoinItems] = useState([{ name: '', unit_price: '', quantity: '1' }]);
   const [proofOrderId, setProofOrderId] = useState('');
   const [proofOrderValue, setProofOrderValue] = useState('');
@@ -175,7 +177,31 @@ export function PoolDetailPage() {
 
   // ─── ACTIONS ────────────────────────────────────────────────────
 
-  async function handleJoin() {
+  const isFinalSlot = memberCount + 1 >= pool.max_members;
+  const isFullPool = memberCount >= pool.max_members;
+
+  async function handleOpenEditModal() {
+    setIsEditMode(true);
+    setActionLoading(true);
+    try {
+      const items = await getMyRequirements(profile!.id);
+      const filtered = items.filter(req => req.pool_id === pool!.id && req.status !== 'cancelled');
+      if (filtered.length > 0) {
+        setJoinItems(filtered.map(d => ({ 
+          name: d.product_description || '', 
+          unit_price: String(d.amount / d.quantity), 
+          quantity: String(d.quantity) 
+        })));
+      }
+      setShowJoinModal(true);
+    } catch(err) {
+      toast.error('Failed to load items');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSubmitOrder() {
     const invalidItem = joinItems.find(i => !i.name.trim() || !i.unit_price || parseFloat(i.unit_price) <= 0);
     if (invalidItem) {
       toast.error('Please enter valid details for all items (name and price > 0).');
@@ -185,14 +211,31 @@ export function PoolDetailPage() {
     const parsedItems = joinItems.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
     const amount = parsedItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
 
-    if (remainingRequired > 0 && amount < remainingRequired) {
-      toast.error(`Minimum contribution required: ₹${remainingRequired}`);
-      return;
+    if (isEditMode) {
+      if (isFullPool) {
+        const oldContribution = myMembership?.contribution || 0;
+        const newPoolTotal = (pool!.current_total || 0) - oldContribution + amount;
+        if (newPoolTotal < (pool!.minimum_order_value || 0)) {
+          toast.error(`This edit would leave the full pool below the minimum order of ₹${pool!.minimum_order_value}.`);
+          return;
+        }
+      }
+    } else {
+      if (isFinalSlot && remainingRequired > 0 && amount < remainingRequired) {
+        toast.error(`Final available spot — minimum ₹${remainingRequired} needed to reach ₹${pool!.minimum_order_value} minimum order.`);
+        return;
+      }
     }
+
     setActionLoading(true);
     try {
-      await joinPool(pool!.id, profile!.id, parsedItems);
-      toast.success('You joined this group order!');
+      if (isEditMode) {
+        await updateMyPoolOrder(pool!.id, parsedItems);
+        toast.success('Order updated!');
+      } else {
+        await joinPool(pool!.id, profile!.id, parsedItems);
+        toast.success('You joined this group order!');
+      }
       setShowJoinModal(false);
       fetchAll();
     } catch (err) {
@@ -728,11 +771,16 @@ export function PoolDetailPage() {
           </button>
         )}
 
-        {/* Leave */}
+        {/* Edit My Order & Leave */}
         {isMember && (status === 'waiting' || status === 'ready') && (
-          <button onClick={handleLeave} disabled={actionLoading} className="w-full py-3.5 border border-red-200 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-colors active:scale-[0.98]">
-            Leave Group Order
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleOpenEditModal} disabled={actionLoading} className="flex-1 py-3.5 bg-brand-50 text-brand-700 border border-brand-200 rounded-xl font-semibold hover:bg-brand-100 transition-colors active:scale-[0.98]">
+              Edit My Order
+            </button>
+            <button onClick={handleLeave} disabled={actionLoading} className="flex-1 py-3.5 border border-red-200 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-colors active:scale-[0.98]">
+              Leave Group Order
+            </button>
+          </div>
         )}
 
         {/* Volunteer as Orderer */}
@@ -780,8 +828,8 @@ export function PoolDetailPage() {
 
       {/* ─── MODALS ────────────────────────────────────────────────────── */}
 
-      {/* Join Modal */}
-      <Modal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} title="Add My Order">
+      {/* Join/Edit Modal */}
+      <Modal isOpen={showJoinModal} onClose={() => { setShowJoinModal(false); setIsEditMode(false); }} title={isEditMode ? "Edit My Order" : "Add My Order"}>
         <div className="space-y-4 mt-4">
           <div className="space-y-3">
             {joinItems.map((item, index) => (
@@ -888,49 +936,51 @@ export function PoolDetailPage() {
             >
               + Add Another Item
             </button>
-            
+
             <div className="flex justify-between items-center py-2 px-1 border-b border-surface-100">
               <span className="text-sm font-medium text-surface-600">Your Order Total:</span>
               <span className="text-lg font-bold text-brand-600">
                 ₹{joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0)}
               </span>
             </div>
-            
-            {remainingRequired > 0 && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700 font-medium">
-                <div className="flex justify-between items-center mb-1">
-                  <span>Minimum Order Needed</span>
-                  <span className="font-semibold">₹{pool.minimum_order_value}</span>
-                </div>
-                <div className="flex justify-between items-center mb-1">
-                  <span>Order Total</span>
-                  <span className="font-semibold">₹{pool.current_total || 0}</span>
-                </div>
-                <div className="flex justify-between items-center pt-1 border-t border-blue-200 mt-1">
-                  <span>Still Needed</span>
-                  <span className="font-bold">₹{remainingRequired}</span>
-                </div>
-                {(() => {
-                  const currentTotalAmount = joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0);
-                  if (currentTotalAmount > 0 && currentTotalAmount < remainingRequired) {
-                    return (
-                      <p className="mt-2 text-red-600 font-semibold bg-red-50 p-2 rounded text-center">
-                        Add at least ₹{remainingRequired} to confirm.
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-            )}
+
+            {/* Minimum Gap Feedback */}
+            {(() => {
+              if (isEditMode) {
+                return (
+                  <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700 font-medium text-center">
+                    {isFullPool 
+                      ? `This pool is full. Your total must satisfy the minimum order.`
+                      : `You can edit your order. Remaining amounts can be covered by others.`}
+                  </div>
+                );
+              }
+
+              if (remainingRequired > 0) {
+                if (isFinalSlot) {
+                  return (
+                    <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 font-medium text-center">
+                      Final available spot — minimum ₹{remainingRequired} needed to reach ₹{pool.minimum_order_value}.
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700 font-medium text-center">
+                      Add any amount. The remaining ₹{remainingRequired} will be covered by later members.
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
           </div>
           
           <button 
-            onClick={handleJoin} 
-            disabled={actionLoading || (remainingRequired > 0 && joinItems.reduce((sum, item) => sum + ((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1)), 0) < remainingRequired)} 
-            className="w-full py-3.5 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={handleSubmitOrder} 
+            disabled={actionLoading} 
+            className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-70 disabled:active:scale-100 shadow-lg shadow-brand-500/20"
           >
-            {actionLoading ? 'Adding...' : 'Confirm & Add'}
+            {actionLoading ? <span className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"/> {isEditMode ? 'Updating...' : 'Joining...'}</span> : (isEditMode ? 'Update My Order' : 'Confirm Order')}
           </button>
           <p className="text-xs text-surface-400 text-center">This is a commitment. You are not transferring money to PoolNear.</p>
         </div>

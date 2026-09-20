@@ -240,19 +240,30 @@ export async function createPool(input: CreatePoolInput, _userId: string) {
 }
 
 /**
- * Join an existing pool.
+ * Join a pool.
  */
-export async function joinPool(
-  poolId: string,
-  _userId: string,
-  items: { name: string; unit_price: number; quantity: number }[]
-) {
-  const totalContribution = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
-
+export async function joinPool(poolId: string, _userId: string, items: Array<{ name: string; unit_price: number; quantity: number }>) {
+  const contribution = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  
   const { error } = await supabase.rpc('join_pool_atomic', {
     p_pool_id: poolId,
     p_items: items,
-    p_contribution: totalContribution,
+    p_contribution: contribution,
+  });
+
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Update my pool order.
+ */
+export async function updateMyPoolOrder(poolId: string, items: Array<{ name: string; unit_price: number; quantity: number }>) {
+  const contribution = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  
+  const { error } = await supabase.rpc('update_my_pool_order_atomic', {
+    p_pool_id: poolId,
+    p_items: items,
+    p_contribution: contribution,
   });
 
   if (error) throw new Error(error.message);
