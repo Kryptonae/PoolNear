@@ -12,8 +12,8 @@ import {
   submitOrderProof, markPaymentSent, confirmPaymentReceived, rejectPayment,
   markOrderDelivered, confirmReceipt, submitReport, updateReceivingLocation,
   requestConnection, respondToConnection, getPoolConnections,
-  updateMyPoolOrder, getMyRequirements,
-  type Pool, type PoolMember, type PoolOrder,
+  updateMyPoolOrder, getMyRequirements, getPoolRequirements, toggleItemAddedToCart,
+  type Pool, type PoolMember, type PoolOrder, type Requirement,
 } from '../services/pools';
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,24 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+function getSafeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let safeUrl = url.trim();
+  const lowerUrl = safeUrl.toLowerCase();
+  if (!lowerUrl.startsWith('http://') && !lowerUrl.startsWith('https://')) {
+    safeUrl = 'https://' + safeUrl;
+  }
+  try {
+    const parsed = new URL(safeUrl);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function PoolDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { profile, hasValidPhone, refreshProfile } = useAuth();
@@ -37,6 +55,7 @@ export function PoolDetailPage() {
   const [members, setMembers] = useState<PoolMember[]>([]);
   const [order, setOrder] = useState<PoolOrder | null>(null);
   const [connections, setConnections] = useState<any[]>([]);
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +65,7 @@ export function PoolDetailPage() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [joinItems, setJoinItems] = useState([{ name: '', unit_price: '', quantity: '1' }]);
+  const [joinItems, setJoinItems] = useState([{ name: '', brand: '', variant_size: '', notes: '', product_url: '', unit_price: '', quantity: '1' }]);
   const [proofOrderId, setProofOrderId] = useState('');
   const [proofOrderValue, setProofOrderValue] = useState('');
   const [proofDeliveryTime, setProofDeliveryTime] = useState('');
@@ -57,6 +76,7 @@ export function PoolDetailPage() {
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [togglingItem, setTogglingItem] = useState<string | null>(null);
 
   const proofFileRef = useRef<HTMLInputElement>(null);
   const paymentFileRef = useRef<HTMLInputElement>(null);
@@ -90,14 +110,16 @@ export function PoolDetailPage() {
   const refetchSilent = useCallback(async () => {
     if (!id) return;
     try {
-      const [poolData, membersData, orderData] = await Promise.all([
+      const [poolData, membersData, orderData, reqData] = await Promise.all([
         getPoolById(id),
         getPoolMembers(id),
         getPoolOrder(id),
+        getPoolRequirements(id),
       ]);
       setPool(poolData);
       setMembers(membersData);
       setOrder(orderData);
+      setRequirements(reqData);
       
       if (profile?.id) {
         const connectionsData = await getPoolConnections(id, profile.id);
@@ -144,6 +166,7 @@ export function PoolDetailPage() {
     };
   }, [id, refetchSilent]);
 
+
   if (loading) return <LoadingState message="Loading pool details..." />;
   if (error || !pool) return <ErrorState message={error || 'Pool not found'} onRetry={fetchAll} />;
 
@@ -189,6 +212,10 @@ export function PoolDetailPage() {
       if (filtered.length > 0) {
         setJoinItems(filtered.map(d => ({ 
           name: d.product_description || '', 
+          brand: d.brand || '',
+          variant_size: d.variant_size || '',
+          notes: d.notes || '',
+          product_url: d.product_url || '',
           unit_price: String(d.amount / d.quantity), 
           quantity: String(d.quantity) 
         })));
@@ -208,7 +235,15 @@ export function PoolDetailPage() {
       return;
     }
     
-    const parsedItems = joinItems.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
+    const parsedItems = joinItems.map(i => ({ 
+      name: i.name.trim(), 
+      brand: i.brand?.trim() || '',
+      variant_size: i.variant_size?.trim() || '',
+      notes: i.notes?.trim() || '',
+      product_url: i.product_url?.trim() || '',
+      unit_price: parseFloat(i.unit_price), 
+      quantity: parseInt(i.quantity) || 1 
+    }));
     const amount = parsedItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
 
     if (isEditMode) {
@@ -290,7 +325,7 @@ export function PoolDetailPage() {
       await submitOrderProof(
         pool!.id, profile!.id, proofOrderId.trim(),
         parseFloat(proofOrderValue),
-        proofDeliveryTime || new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        proofDeliveryTime ? new Date(proofDeliveryTime).toISOString() : new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         proofImageUrl
       );
       toast.success('Order proof submitted!');
@@ -581,6 +616,112 @@ export function PoolDetailPage() {
         ))}
       </div>
 
+      {/* Orderer Shopping View */}
+      {isOrderer && status === 'ordering' && requirements.length > 0 && (
+        <div className="bg-white rounded-2xl border border-brand-200 p-5 space-y-4 animate-fade-in shadow-sm">
+          <h3 className="font-semibold text-brand-900 text-sm flex items-center justify-between">
+            <span>Shopping List</span>
+            <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">
+              {requirements.filter(r => r.is_added_to_cart).length} / {requirements.length} Added
+            </span>
+          </h3>
+          <div className="space-y-3">
+            {requirements.map((req) => (
+              <div key={req.id} className={`p-3 rounded-xl border transition-colors ${req.is_added_to_cart ? 'bg-surface-50 border-surface-200 opacity-75' : 'bg-white border-surface-200'}`}>
+                <div className="flex items-start gap-3">
+                  <button 
+                    disabled={togglingItem === req.id}
+                    onClick={async () => {
+                      if (togglingItem === req.id) return;
+                      setTogglingItem(req.id);
+                      const originalStatus = req.is_added_to_cart;
+                      const newStatus = !originalStatus;
+                      try {
+                        setRequirements(prev => prev.map(r => r.id === req.id ? { ...r, is_added_to_cart: newStatus } : r));
+                        
+                        await toggleItemAddedToCart(req.id, newStatus);
+                        refetchSilent();
+                      } catch (err: any) {
+                        toast.error('Failed to update item status: ' + (err.message || 'Unknown error'));
+                        setRequirements(prev => prev.map(r => r.id === req.id ? { ...r, is_added_to_cart: originalStatus } : r));
+                        refetchSilent();
+                      } finally {
+                        setTogglingItem(null);
+                      }
+                    }}
+                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                      req.is_added_to_cart ? 'bg-brand-500 border-brand-500 text-white' : 'border-surface-300 text-transparent hover:border-brand-400'
+                    } ${togglingItem === req.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <CheckCircle2 size={14} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start gap-2">
+                      <p className={`text-sm font-medium ${req.is_added_to_cart ? 'text-surface-500 line-through' : 'text-surface-900'}`}>
+                        {req.product_description}
+                      </p>
+                      <span className="text-xs font-semibold text-surface-900 whitespace-nowrap">
+                        {req.quantity} × ₹{req.amount / req.quantity}
+                      </span>
+                    </div>
+                    
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {req.brand && (
+                        <span className="text-[10px] bg-surface-100 text-surface-600 px-1.5 py-0.5 rounded font-medium border border-surface-200">
+                          Brand: {req.brand}
+                        </span>
+                      )}
+                      {req.variant_size && (
+                        <span className="text-[10px] bg-surface-100 text-surface-600 px-1.5 py-0.5 rounded font-medium border border-surface-200">
+                          Size: {req.variant_size}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-surface-500 bg-surface-50 px-1.5 py-0.5 rounded">
+                        For: {members.find(m => m.user_id === req.user_id)?.profiles?.name || 'Unknown'}
+                      </span>
+                    </div>
+                    
+                    {req.notes && (
+                      <p className="mt-2 text-xs text-surface-600 bg-surface-50 p-2 rounded-lg italic border border-surface-100">
+                        "{req.notes}"
+                      </p>
+                    )}
+                    
+                    {req.product_url && getSafeUrl(req.product_url) ? (
+                      <div className="mt-3">
+                        <a 
+                          href={getSafeUrl(req.product_url)!}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="w-full inline-flex items-center justify-center gap-2 bg-brand-50 hover:bg-brand-100 text-brand-700 font-medium py-2 px-3 rounded-lg border border-brand-200 transition-colors text-sm"
+                        >
+                          View Product / Order
+                        </a>
+                        <p className="text-[10px] text-surface-500 text-center mt-1.5">
+                          Open this link to check the exact product and add it to your cart.
+                        </p>
+                      </div>
+                    ) : req.product_url ? (
+                      <div className="mt-2 flex gap-2">
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(req.product_description);
+                            toast.success('Copied item name to search');
+                          }}
+                          className="text-[10px] bg-surface-50 text-surface-600 border border-surface-200 px-2 py-1 rounded hover:bg-surface-100 transition-colors inline-flex items-center gap-1"
+                        >
+                          Copy Search Text
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Payment Dashboard (Orderer) */}
       {isOrderer && (status === 'ordering' || status === 'order_placed') && (
         <div className="bg-white rounded-2xl border border-brand-200 p-5 space-y-3 animate-fade-in shadow-sm">
@@ -682,9 +823,25 @@ export function PoolDetailPage() {
                     <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 text-center space-y-2">
                       <div className="text-sm font-semibold text-brand-900">Payment contact</div>
                       <p className="text-xs text-brand-700">Contact the orderer on this number to make your payment.</p>
-                      <div className="text-xl font-mono font-bold text-brand-900 py-1">
-                        {connections.find(c => c.status === 'accepted' && (c.requester_id === pool.orderer_id || c.receiver_id === pool.orderer_id))?.contact_phone || 'Phone hidden'}
-                      </div>
+                    {(() => {
+                      const connection = connections.find(c => c.status === 'accepted' && (c.requester_id === pool.orderer_id || c.receiver_id === pool.orderer_id));
+                      console.log('DEBUG MATCHING (Member view Orderer):', {
+                        current_user_id: profile?.id,
+                        pool_id: pool.id,
+                        member_user_id: myMembership.user_id, // it's me
+                        orderer_id: pool.orderer_id,
+                        matched_connection_id: connection?.id,
+                        matched_connection_requester_id: connection?.requester_id,
+                        matched_connection_receiver_id: connection?.receiver_id,
+                        matched_connection_status: connection?.status,
+                        matched_connection_contact_phone: connection?.contact_phone
+                      });
+                      return (
+                        <div className="text-xl font-mono font-bold text-brand-900 py-1">
+                          {connection?.contact_phone || 'Phone hidden'}
+                        </div>
+                      );
+                    })()}
                       <p className="text-xs text-brand-700 font-medium pt-1">After you've made the payment, click "I've Paid" below.</p>
                     </div>
                     
@@ -844,7 +1001,7 @@ export function PoolDetailPage() {
                   </button>
                 )}
                 
-                <div className="pr-8">
+                <div className="pr-8 space-y-3">
                   <input
                     type="text"
                     value={item.name}
@@ -853,12 +1010,61 @@ export function PoolDetailPage() {
                       newItems[index].name = e.target.value;
                       setJoinItems(newItems);
                     }}
-                    placeholder="e.g. Biscuit, Snacks..."
+                    placeholder="Item Name (e.g. Biscuit, Snacks...)"
+                    className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-medium"
+                  />
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={item.brand || ''}
+                      onChange={(e) => {
+                        const newItems = [...joinItems];
+                        newItems[index].brand = e.target.value;
+                        setJoinItems(newItems);
+                      }}
+                      placeholder="Brand (Optional)"
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                    />
+                    <input
+                      type="text"
+                      value={item.variant_size || ''}
+                      onChange={(e) => {
+                        const newItems = [...joinItems];
+                        newItems[index].variant_size = e.target.value;
+                        setJoinItems(newItems);
+                      }}
+                      placeholder="Size/Variant (Optional)"
+                      className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                    />
+                  </div>
+                  
+                  <input
+                    type="url"
+                    value={item.product_url || ''}
+                    onChange={(e) => {
+                      const newItems = [...joinItems];
+                      newItems[index].product_url = e.target.value;
+                      setJoinItems(newItems);
+                    }}
+                    placeholder="Product URL (Optional)"
                     className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  />
+                  
+                  <textarea
+                    value={item.notes || ''}
+                    onChange={(e) => {
+                      const newItems = [...joinItems];
+                      newItems[index].notes = e.target.value;
+                      setJoinItems(newItems);
+                    }}
+                    placeholder="Notes for orderer (Optional)"
+                    rows={2}
+                    className="w-full px-3 py-2 bg-white border border-surface-200 rounded-lg text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all resize-none"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-surface-100">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">₹</span>
                     <input
@@ -931,7 +1137,7 @@ export function PoolDetailPage() {
             
             <button
               type="button"
-              onClick={() => setJoinItems([...joinItems, { name: '', unit_price: '', quantity: '1' }])}
+              onClick={() => setJoinItems([...joinItems, { name: '', brand: '', variant_size: '', notes: '', product_url: '', unit_price: '', quantity: '1' }])}
               className="w-full py-2 rounded-xl border-2 border-dashed border-surface-200 text-surface-500 font-medium text-sm hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all"
             >
               + Add Another Item

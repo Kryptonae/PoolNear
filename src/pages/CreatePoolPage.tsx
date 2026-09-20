@@ -16,7 +16,7 @@ export function CreatePoolPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
 
-  const [items, setItems] = useState([{ name: '', unit_price: '', quantity: '1' }]);
+  const [items, setItems] = useState([{ name: '', brand: '', variant_size: '', notes: '', product_url: '', unit_price: '', quantity: '1' }]);
   const [platform, setPlatform] = useState<PlatformKey | ''>('');
   const [platformOther, setPlatformOther] = useState('');
   const [minOrderValue, setMinOrderValue] = useState(DEFAULT_MIN_ORDER.toString());
@@ -195,7 +195,7 @@ export function CreatePoolPage() {
                 </button>
               )}
               
-              <div className="pr-8">
+              <div className="pr-8 space-y-3">
                 <input
                   type="text"
                   value={item.name}
@@ -204,13 +204,62 @@ export function CreatePoolPage() {
                     newItems[index].name = e.target.value;
                     setItems(newItems);
                   }}
-                  placeholder="e.g. Biscuit, Snacks..."
-                  className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  placeholder="Item Name (e.g. Biscuit, Snacks...)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-medium"
                   required
+                />
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={item.brand || ''}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[index].brand = e.target.value;
+                      setItems(newItems);
+                    }}
+                    placeholder="Brand (Optional)"
+                    className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  />
+                  <input
+                    type="text"
+                    value={item.variant_size || ''}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[index].variant_size = e.target.value;
+                      setItems(newItems);
+                    }}
+                    placeholder="Size/Variant (Optional)"
+                    className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                  />
+                </div>
+                
+                <input
+                  type="url"
+                  value={item.product_url || ''}
+                  onChange={(e) => {
+                    const newItems = [...items];
+                    newItems[index].product_url = e.target.value;
+                    setItems(newItems);
+                  }}
+                  placeholder="Product URL (Optional)"
+                  className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all"
+                />
+                
+                <textarea
+                  value={item.notes || ''}
+                  onChange={(e) => {
+                    const newItems = [...items];
+                    newItems[index].notes = e.target.value;
+                    setItems(newItems);
+                  }}
+                  placeholder="Notes for orderer (Optional)"
+                  rows={2}
+                  className="w-full px-4 py-2.5 bg-white border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-surface-100">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 font-medium text-sm">₹</span>
                   <input
@@ -284,7 +333,7 @@ export function CreatePoolPage() {
           
           <button
             type="button"
-            onClick={() => setItems([...items, { name: '', unit_price: '', quantity: '1' }])}
+            onClick={() => setItems([...items, { name: '', brand: '', variant_size: '', notes: '', product_url: '', unit_price: '', quantity: '1' }])}
             className="w-full py-2.5 rounded-xl border-2 border-dashed border-surface-200 text-surface-500 font-medium text-sm hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all flex items-center justify-center gap-2"
           >
             + Add Another Item

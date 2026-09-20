@@ -62,7 +62,13 @@ export interface Requirement {
   destination: string | null;
   status: string;
   created_at: string;
+  updated_at: string;
   expires_at: string;
+  brand?: string | null;
+  variant_size?: string | null;
+  notes?: string | null;
+  product_url?: string | null;
+  is_added_to_cart?: boolean;
 }
 
 export interface PoolMember {
@@ -418,6 +424,28 @@ export async function getMyRequirements(userId: string) {
 
   if (error) throw new Error(error.message);
   return (data || []) as Requirement[];
+}
+
+/**
+ * Get all requirements for a specific pool.
+ */
+export async function getPoolRequirements(poolId: string) {
+  const { data, error } = await supabase
+    .from('requirements')
+    .select('*')
+    .eq('pool_id', poolId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []) as Requirement[];
+}
+
+export async function toggleItemAddedToCart(requirementId: string, isAdded: boolean) {
+  const { error } = await supabase.rpc('toggle_item_added_to_cart', {
+    p_requirement_id: requirementId,
+    p_is_added: isAdded
+  });
+  if (error) throw new Error(error.message);
 }
 
 // ─── CONNECTIONS ────────────────────────────────────────────────
