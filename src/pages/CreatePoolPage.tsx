@@ -3,13 +3,15 @@
 // Form for creating a new pool with all required fields
 // ═══════════════════════════════════════════════════════════════════
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { createPool, getNearbyPools, joinPool } from '../services/pools';
 import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
 import { PLATFORM_LIST, TIME_OPTIONS, RADIUS_OPTIONS, DEFAULT_MIN_ORDER, DEFAULT_MAX_MEMBERS, type PlatformKey } from '../lib/constants';
 import { ArrowLeft, Package, Clock, MapPin, Users, ChevronRight, X } from 'lucide-react';
+import { useGlobalLocation } from '../hooks/useGlobalLocation';
+import { LocationInput } from '../components/LocationInput';
 import toast from 'react-hot-toast';
 
 export function CreatePoolPage() {
@@ -27,8 +29,16 @@ export function CreatePoolPage() {
   const [submitting, setSubmitting] = useState(false);
   const [matches, setMatches] = useState<MatchCandidate[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
+  const globalLocation = useGlobalLocation();
+  const [localPoolLocation, setLocalPoolLocation] = useState(globalLocation);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
-  const hasLocation = profile?.latitude && profile?.longitude;
+  // Sync with global location initially if local is not set
+  useEffect(() => {
+    if (globalLocation && !localPoolLocation) {
+      setLocalPoolLocation(globalLocation);
+    }
+  }, [globalLocation, localPoolLocation]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,8 +60,8 @@ export function CreatePoolPage() {
       toast.error('Please enter the platform name.');
       return;
     }
-    if (!hasLocation) {
-      toast.error('Location is required to create a pool. Please enable location access.');
+    if (!localPoolLocation) {
+      toast.error('Location is required to create a pool.');
       return;
     }
 
@@ -75,12 +85,12 @@ export function CreatePoolPage() {
     setSubmitting(true);
     try {
       // 1. Check for matches first
-      const nearby = await getNearbyPools(profile!.latitude!, profile!.longitude!, maxDistance, platform as PlatformKey, 'waiting');
+      const nearby = await getNearbyPools(localPoolLocation.latitude, localPoolLocation.longitude, maxDistance, platform as PlatformKey, 'waiting');
       const foundMatches = findBestMatches(nearby, {
         platform: platform as PlatformKey,
         amount: totalAmount,
-        latitude: profile!.latitude!,
-        longitude: profile!.longitude!,
+        latitude: localPoolLocation.latitude,
+        longitude: localPoolLocation.longitude,
         maximumDistance: maxDistance,
         requiredBy: expiresAt.toISOString(),
         minimumOrderValue: parseFloat(minOrderValue) || DEFAULT_MIN_ORDER,
@@ -109,11 +119,14 @@ export function CreatePoolPage() {
       const selectedTime = TIME_OPTIONS.find((t) => t.key === timeOption)!;
       expiresAt = selectedTime.getExpiry();
     }
-    const finalDestination = 'To be decided';
-
+    const parsedItems = items.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
+    
+    if (!localPoolLocation) {
+      toast.error('Location is required to create a pool.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const parsedItems = items.map(i => ({ name: i.name.trim(), unit_price: parseFloat(i.unit_price), quantity: parseInt(i.quantity) || 1 }));
       const pool = await createPool(
         {
           items: parsedItems,
@@ -122,9 +135,9 @@ export function CreatePoolPage() {
           minimum_order_value: parseFloat(minOrderValue) || DEFAULT_MIN_ORDER,
           required_by: expiresAt.toISOString(),
           maximum_distance: maxDistance,
-          latitude: profile!.latitude!,
-          longitude: profile!.longitude!,
-          destination: finalDestination,
+          latitude: localPoolLocation!.latitude,
+          longitude: localPoolLocation!.longitude,
+          destination: localPoolLocation!.destination,
           max_members: maxMembers,
           expires_at: expiresAt.toISOString(),
         },
@@ -378,6 +391,35 @@ export function CreatePoolPage() {
           )}
         </div>
 
+        {/* Delivery Location */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-semibold text-surface-700">Delivery Location</label>
+            <button 
+              type="button"
+              onClick={() => setShowLocationModal(true)}
+              className="text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-md transition-colors"
+            >
+              Change
+            </button>
+          </div>
+          <div className="bg-white border border-surface-200 rounded-xl p-3 flex items-start gap-2.5 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 mt-0.5">
+              <MapPin size={16} className="text-brand-500" />
+            </div>
+            <div className="flex-1 min-w-0 pt-1">
+              <p className="text-sm font-medium text-surface-900 truncate">
+                {localPoolLocation?.destination || 'No location set'}
+              </p>
+              {localPoolLocation && (
+                <p className="text-[10px] text-surface-500 mt-0.5">
+                  Used for order delivery • Changing this won't affect your global location
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Minimum Order Value */}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-surface-700">Minimum order value</label>
@@ -488,18 +530,10 @@ export function CreatePoolPage() {
           </div>
         </div>
 
-        {/* Location warning */}
-        {!hasLocation && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-            <p className="font-medium">📍 Location required</p>
-            <p className="text-amber-600 mt-1">Please enable location access from the home screen before creating a pool.</p>
-          </div>
-        )}
-
         {/* Submit */}
         <button
           type="submit"
-          disabled={submitting || !hasLocation}
+          disabled={submitting || !localPoolLocation}
           className="w-full flex items-center justify-center gap-2 bg-brand-500 text-white font-semibold rounded-xl py-4 hover:bg-brand-600 transition-colors active:scale-[0.98] disabled:opacity-70 disabled:hover:bg-brand-500 disabled:active:scale-100 shadow-lg shadow-brand-500/20"
         >
           {submitting ? 'Starting...' : 'Start Group Order'}
@@ -572,6 +606,33 @@ export function CreatePoolPage() {
               >
                 Create New Pool Anyway
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location Modal */}
+      {showLocationModal && (
+        <div className="fixed inset-0 bg-surface-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-slide-up">
+            <div className="p-4 border-b border-surface-100 flex justify-between items-center bg-surface-50">
+              <h2 className="font-bold text-surface-900">Change Delivery Location</h2>
+              <button type="button" onClick={() => setShowLocationModal(false)} className="p-1.5 text-surface-400 hover:bg-surface-200 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 bg-white max-h-[70vh] overflow-y-auto">
+              <LocationInput 
+                onLocationSelect={(loc) => {
+                  if (loc) {
+                    setLocalPoolLocation(loc);
+                    setShowLocationModal(false);
+                  }
+                }}
+                defaultDestination={localPoolLocation?.destination}
+                defaultLatitude={localPoolLocation?.latitude}
+                defaultLongitude={localPoolLocation?.longitude}
+              />
             </div>
           </div>
         </div>

@@ -12,19 +12,22 @@ import {
   submitOrderProof, markPaymentSent, confirmPaymentReceived, rejectPayment,
   markOrderDelivered, confirmReceipt, submitReport, updateReceivingLocation,
   requestConnection, respondToConnection, getPoolConnections,
-  updateMyPoolOrder, getMyRequirements, getPoolRequirements, toggleItemAddedToCart,
+  updateMyPoolOrder, getMyRequirements, getPoolRequirements,
   type Pool, type PoolMember, type PoolOrder, type Requirement,
 } from '../services/pools';
 import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { supabase } from '../lib/supabase';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState } from '../components/ui';
+import { LocationInput } from '../components/LocationInput';
+import { type GlobalLocation } from '../components/GlobalLocationPicker';
+import { useGlobalLocation } from '../hooks/useGlobalLocation';
 import { PhoneNumberModal } from '../components/PhoneNumberModal';
 import { type PoolStatusKey } from '../lib/constants';
 import { formatDistance, haversineDistance } from '../lib/geo';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
   ArrowLeft, MapPin, Clock, Users, UserCheck, ShieldCheck,
-  Upload, CheckCircle2, Flag, Image,
+  Upload, CheckCircle2, Flag, Image, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -71,12 +74,23 @@ export function PoolDetailPage() {
   const [proofDeliveryTime, setProofDeliveryTime] = useState('');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
-  const [myDestination, setMyDestination] = useState('');
+  const [myDestination, setMyDestination] = useState<GlobalLocation | null>(null);
+  const [showEditDestination, setShowEditDestination] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const [togglingItem, setTogglingItem] = useState<string | null>(null);
+  
+  const globalLocation = useGlobalLocation();
+  const [joinLocation, setJoinLocation] = useState<GlobalLocation | null>(null);
+  const [showJoinLocationModal, setShowJoinLocationModal] = useState(false);
+
+  // Keep join location in sync with global location when modal opens if not set
+  useEffect(() => {
+    if (showJoinModal && !isEditMode && !joinLocation && globalLocation) {
+      setJoinLocation(globalLocation);
+    }
+  }, [showJoinModal, isEditMode, joinLocation, globalLocation]);
 
   const proofFileRef = useRef<HTMLInputElement>(null);
   const paymentFileRef = useRef<HTMLInputElement>(null);
@@ -98,6 +112,21 @@ export function PoolDetailPage() {
       if (profile?.id) {
         const connectionsData = await getPoolConnections(id, profile.id);
         setConnections(connectionsData);
+        
+        // Initialize myDestination with the member's current destination if set
+        const me = membersData.find((m: any) => m.user_id === profile.id);
+        if (me && me.destination && me.destination !== 'To be decided') {
+          // Attempt to find requirements for lat/lng
+          const reqs = await getPoolRequirements(id);
+          const myReq = reqs.find((r: any) => r.user_id === profile.id);
+          if (myReq && myReq.latitude && myReq.longitude) {
+            setMyDestination({
+              destination: me.destination,
+              latitude: myReq.latitude,
+              longitude: myReq.longitude
+            });
+          }
+        }
       }
     } catch (err) {
       setError((err as Error).message);
@@ -219,6 +248,14 @@ export function PoolDetailPage() {
           unit_price: String(d.amount / d.quantity), 
           quantity: String(d.quantity) 
         })));
+        // Load existing location for edit mode
+        if (filtered[0].latitude && filtered[0].longitude && filtered[0].destination) {
+          setJoinLocation({
+            latitude: filtered[0].latitude,
+            longitude: filtered[0].longitude,
+            destination: filtered[0].destination
+          });
+        }
       }
       setShowJoinModal(true);
     } catch(err) {
@@ -265,10 +302,22 @@ export function PoolDetailPage() {
     setActionLoading(true);
     try {
       if (isEditMode) {
+        // Also update destination if provided
         await updateMyPoolOrder(pool!.id, parsedItems);
+        if (joinLocation) {
+          await updateReceivingLocation(pool!.id, joinLocation.destination, joinLocation.latitude, joinLocation.longitude);
+        }
         toast.success('Order updated!');
       } else {
-        await joinPool(pool!.id, profile!.id, parsedItems);
+        await joinPool(
+          pool!.id, 
+          profile!.id, 
+          parsedItems,
+          joinLocation?.destination,
+          joinLocation?.latitude,
+          joinLocation?.longitude
+        );
+        
         toast.success('You joined this group order!');
       }
       setShowJoinModal(false);
@@ -403,11 +452,12 @@ export function PoolDetailPage() {
   }
 
   async function handleSaveDestination() {
-    if (!myDestination.trim()) return;
+    if (!myDestination) return;
     setActionLoading(true);
     try {
-      await updateReceivingLocation(pool!.id, myDestination.trim());
+      await updateReceivingLocation(pool!.id, myDestination.destination, myDestination.latitude, myDestination.longitude);
       toast.success('Receiving location saved');
+      setShowEditDestination(false);
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -554,7 +604,7 @@ export function PoolDetailPage() {
                 </p>
                 {/* Connection UI */}
                 {isMember && member.user_id !== profile?.id && (isOrderer || member.user_id === pool.orderer_id) && (
-                  <div className="mt-2">
+                  <div className="mt-3">
                     {(() => {
                       const connection = connections.find(c => 
                         (c.requester_id === member.user_id && c.receiver_id === profile?.id) ||
@@ -564,13 +614,13 @@ export function PoolDetailPage() {
                       if (!connection) {
                         if (!hasValidPhone) {
                           return (
-                            <button onClick={() => setShowPhoneModal(true)} className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full font-medium hover:bg-red-100 transition-colors">
+                            <button onClick={() => setShowPhoneModal(true)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-xl font-medium hover:bg-red-100 transition-colors border border-red-200 shadow-sm">
                               Add Phone to Connect
                             </button>
                           );
                         }
                         return (
-                          <button onClick={() => handleRequestConnection(member.user_id)} className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-full font-medium hover:bg-brand-100 transition-colors">
+                          <button onClick={() => handleRequestConnection(member.user_id)} className="text-xs bg-brand-50 text-brand-600 px-3 py-1.5 rounded-xl font-medium hover:bg-brand-100 transition-colors border border-brand-200 shadow-sm">
                             Connect for Payment
                           </button>
                         );
@@ -579,21 +629,32 @@ export function PoolDetailPage() {
                       if (connection.status === 'pending') {
                         if (connection.receiver_id === profile?.id) {
                           return (
-                            <div className="flex gap-2">
-                              <button onClick={() => handleRespondConnection(connection.id, true)} className="text-xs bg-brand-500 text-white px-2.5 py-1 rounded-full font-medium hover:bg-brand-600">Accept</button>
-                              <button onClick={() => handleRespondConnection(connection.id, false)} className="text-xs bg-red-100 text-red-600 px-2.5 py-1 rounded-full font-medium hover:bg-red-200">Reject</button>
+                            <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-2 shadow-sm">
+                              <p className="text-xs font-bold text-brand-900 uppercase tracking-wide mb-1">CONNECTION REQUEST</p>
+                              <p className="text-sm text-brand-800 mb-3">{member.profiles?.name || 'User'} wants to connect with you for this pool.</p>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleRespondConnection(connection.id, true)} className="flex-1 text-sm bg-brand-500 text-white py-2 rounded-xl font-semibold hover:bg-brand-600 transition-colors shadow-sm">Accept</button>
+                                <button onClick={() => handleRespondConnection(connection.id, false)} className="flex-1 text-sm bg-white text-surface-700 py-2 rounded-xl font-semibold hover:bg-surface-50 transition-colors border border-surface-200 shadow-sm">Decline</button>
+                              </div>
                             </div>
                           );
                         } else {
-                          return <span className="text-xs bg-surface-100 text-surface-500 px-2.5 py-1 rounded-full">Request Sent</span>;
+                          return <div className="text-xs bg-surface-100 text-surface-600 px-3 py-1.5 rounded-xl font-medium border border-surface-200 inline-block">⏳ Request Sent</div>;
                         }
                       }
                       
                       if (connection.status === 'accepted') {
-                        return <span className="text-xs font-mono bg-green-50 text-green-700 px-2 py-1 rounded-md">{connection.contact_phone || 'No phone number'}</span>;
+                        return (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 inline-flex items-center gap-3 shadow-sm mt-1">
+                            <div className="flex items-center gap-1 text-emerald-700 font-medium text-xs bg-emerald-100/50 px-2 py-1 rounded-lg">
+                              <CheckCircle2 size={14} /> Connected
+                            </div>
+                            <span className="text-sm font-mono font-bold text-emerald-900 tracking-wide">{connection.contact_phone || 'No phone number'}</span>
+                          </div>
+                        );
                       }
                       
-                      return <span className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full">Connection Rejected</span>;
+                      return <span className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-xl font-medium border border-red-200 inline-block">Connection Rejected</span>;
                     })()}
                   </div>
                 )}
@@ -619,105 +680,63 @@ export function PoolDetailPage() {
       {/* Orderer Shopping View */}
       {isOrderer && status === 'ordering' && requirements.length > 0 && (
         <div className="bg-white rounded-2xl border border-brand-200 p-5 space-y-4 animate-fade-in shadow-sm">
-          <h3 className="font-semibold text-brand-900 text-sm flex items-center justify-between">
-            <span>Shopping List</span>
-            <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">
-              {requirements.filter(r => r.is_added_to_cart).length} / {requirements.length} Added
-            </span>
+          <h3 className="font-semibold text-brand-900 text-sm">
+            Shopping List
           </h3>
-          <div className="space-y-3">
-            {requirements.map((req) => (
-              <div key={req.id} className={`p-3 rounded-xl border transition-colors ${req.is_added_to_cart ? 'bg-surface-50 border-surface-200 opacity-75' : 'bg-white border-surface-200'}`}>
-                <div className="flex items-start gap-3">
-                  <button 
-                    disabled={togglingItem === req.id}
-                    onClick={async () => {
-                      if (togglingItem === req.id) return;
-                      setTogglingItem(req.id);
-                      const originalStatus = req.is_added_to_cart;
-                      const newStatus = !originalStatus;
-                      try {
-                        setRequirements(prev => prev.map(r => r.id === req.id ? { ...r, is_added_to_cart: newStatus } : r));
-                        
-                        await toggleItemAddedToCart(req.id, newStatus);
-                        refetchSilent();
-                      } catch (err: any) {
-                        toast.error('Failed to update item status: ' + (err.message || 'Unknown error'));
-                        setRequirements(prev => prev.map(r => r.id === req.id ? { ...r, is_added_to_cart: originalStatus } : r));
-                        refetchSilent();
-                      } finally {
-                        setTogglingItem(null);
-                      }
-                    }}
-                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-                      req.is_added_to_cart ? 'bg-brand-500 border-brand-500 text-white' : 'border-surface-300 text-transparent hover:border-brand-400'
-                    } ${togglingItem === req.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <CheckCircle2 size={14} />
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start gap-2">
-                      <p className={`text-sm font-medium ${req.is_added_to_cart ? 'text-surface-500 line-through' : 'text-surface-900'}`}>
-                        {req.product_description}
-                      </p>
-                      <span className="text-xs font-semibold text-surface-900 whitespace-nowrap">
-                        {req.quantity} × ₹{req.amount / req.quantity}
-                      </span>
-                    </div>
-                    
-                    <div className="mt-1.5 flex flex-wrap gap-2">
-                      {req.brand && (
-                        <span className="text-[10px] bg-surface-100 text-surface-600 px-1.5 py-0.5 rounded font-medium border border-surface-200">
-                          Brand: {req.brand}
-                        </span>
-                      )}
-                      {req.variant_size && (
-                        <span className="text-[10px] bg-surface-100 text-surface-600 px-1.5 py-0.5 rounded font-medium border border-surface-200">
-                          Size: {req.variant_size}
-                        </span>
-                      )}
-                      <span className="text-[10px] text-surface-500 bg-surface-50 px-1.5 py-0.5 rounded">
-                        For: {members.find(m => m.user_id === req.user_id)?.profiles?.name || 'Unknown'}
-                      </span>
-                    </div>
-                    
-                    {req.notes && (
-                      <p className="mt-2 text-xs text-surface-600 bg-surface-50 p-2 rounded-lg italic border border-surface-100">
-                        "{req.notes}"
-                      </p>
-                    )}
-                    
-                    {req.product_url && getSafeUrl(req.product_url) ? (
-                      <div className="mt-3">
-                        <a 
-                          href={getSafeUrl(req.product_url)!}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="w-full inline-flex items-center justify-center gap-2 bg-brand-50 hover:bg-brand-100 text-brand-700 font-medium py-2 px-3 rounded-lg border border-brand-200 transition-colors text-sm"
-                        >
-                          View Product / Order
-                        </a>
-                        <p className="text-[10px] text-surface-500 text-center mt-1.5">
-                          Open this link to check the exact product and add it to your cart.
-                        </p>
+          <div className="space-y-4">
+            {members.filter(m => requirements.some(r => r.user_id === m.user_id)).map(member => {
+              const memberReqs = requirements.filter(r => r.user_id === member.user_id);
+              if (memberReqs.length === 0) return null;
+              
+              return (
+                <div key={member.user_id} className="bg-white rounded-xl border border-surface-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-surface-50 border-b border-surface-100 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-surface-900 flex items-center gap-2">
+                      {member.profiles?.name || 'Unknown User'}
+                      {member.user_id === profile?.id && <span className="text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">You</span>}
+                    </p>
+                    <span className="text-xs font-medium text-surface-500">{memberReqs.length} items</span>
+                  </div>
+                  <div className="divide-y divide-surface-100">
+                    {memberReqs.map((req) => (
+                      <div key={req.id} className="p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-surface-900 truncate">
+                              {req.product_description}
+                            </p>
+                            <p className="text-xs text-surface-500 mt-0.5">
+                              {req.quantity} × ₹{req.amount / req.quantity}
+                            </p>
+                            {(req.brand || req.variant_size) && (
+                              <p className="text-[10px] text-surface-400 mt-1">
+                                {[req.brand, req.variant_size].filter(Boolean).join(' • ')}
+                              </p>
+                            )}
+                            {req.notes && (
+                              <p className="mt-1.5 text-xs text-surface-600 italic">"{req.notes}"</p>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                            <span className="text-sm font-bold text-surface-900">₹{req.amount}</span>
+                            {req.product_url && getSafeUrl(req.product_url) && (
+                              <a 
+                                href={getSafeUrl(req.product_url)!}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[10px] bg-brand-50 hover:bg-brand-100 text-brand-700 font-medium py-1 px-2.5 rounded-lg border border-brand-200 transition-colors inline-flex items-center gap-1"
+                              >
+                                View Product ↗
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    ) : req.product_url ? (
-                      <div className="mt-2 flex gap-2">
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(req.product_description);
-                            toast.success('Copied item name to search');
-                          }}
-                          className="text-[10px] bg-surface-50 text-surface-600 border border-surface-200 px-2 py-1 rounded hover:bg-surface-100 transition-colors inline-flex items-center gap-1"
-                        >
-                          Copy Search Text
-                        </button>
-                      </div>
-                    ) : null}
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -803,23 +822,37 @@ export function PoolDetailPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {(!myMembership.destination || myMembership.destination === 'To be decided') ? (
+                {(!myMembership.destination || myMembership.destination === 'To be decided' || showEditDestination) ? (
                   <div className="bg-white border border-surface-200 rounded-xl p-4 space-y-3">
-                    <div className="text-sm font-semibold text-surface-900">Choose Receiving Location</div>
-                    <p className="text-xs text-surface-500">Now that you're connected with the orderer, choose where you'll receive your items.</p>
-                    <input 
-                      type="text" 
-                      value={myDestination} 
-                      onChange={e => setMyDestination(e.target.value)} 
-                      placeholder="e.g. Tower A Lobby" 
-                      className="w-full px-4 py-3 bg-white border border-surface-200 rounded-xl text-sm placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500" 
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm font-semibold text-surface-900">Choose Receiving Location</div>
+                      {myMembership.destination && myMembership.destination !== 'To be decided' && (
+                        <button onClick={() => setShowEditDestination(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>
+                      )}
+                    </div>
+                    <p className="text-xs text-surface-500">Provide a clear location where the orderer can deliver your items.</p>
+                    <LocationInput 
+                      onLocationSelect={setMyDestination} 
+                      defaultDestination={myDestination?.destination || undefined}
+                      defaultLatitude={myDestination?.latitude || undefined}
+                      defaultLongitude={myDestination?.longitude || undefined}
                     />
-                    <button onClick={handleSaveDestination} disabled={actionLoading || !myDestination.trim()} className="w-full py-2.5 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 transition-colors">
+                    <button onClick={handleSaveDestination} disabled={actionLoading || !myDestination} className="w-full py-2.5 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 transition-colors">
                       Save Location
                     </button>
                   </div>
                 ) : (
                   <>
+                    <div className="bg-white border border-surface-200 rounded-xl p-3 flex justify-between items-center">
+                      <div className="flex items-center gap-2 text-sm text-surface-700 font-medium">
+                        <MapPin size={16} className="text-brand-500" />
+                        <span className="truncate max-w-[200px]">{myMembership.destination}</span>
+                      </div>
+                      <button onClick={() => setShowEditDestination(true)} className="text-xs text-brand-600 font-semibold hover:underline">
+                        Edit
+                      </button>
+                    </div>
+
                     <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 text-center space-y-2">
                       <div className="text-sm font-semibold text-brand-900">Payment contact</div>
                       <p className="text-xs text-brand-700">Contact the orderer on this number to make your payment.</p>
@@ -1181,16 +1214,72 @@ export function PoolDetailPage() {
             })()}
           </div>
           
+          {/* Join Location Block */}
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-surface-700">Receiving Location</label>
+              <button 
+                type="button"
+                onClick={() => setShowJoinLocationModal(true)}
+                className="text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-md transition-colors"
+              >
+                Change
+              </button>
+            </div>
+            <div className="bg-white border border-surface-200 rounded-xl p-3 flex items-start gap-2.5 shadow-sm">
+              <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 mt-0.5">
+                <MapPin size={16} className="text-brand-500" />
+              </div>
+              <div className="flex-1 min-w-0 pt-1">
+                <p className="text-sm font-medium text-surface-900 truncate">
+                  {joinLocation?.destination || 'No location set'}
+                </p>
+                {joinLocation && (
+                  <p className="text-[10px] text-surface-500 mt-0.5">
+                    Used for receiving your items
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          
           <button 
             onClick={handleSubmitOrder} 
-            disabled={actionLoading} 
-            className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-70 disabled:active:scale-100 shadow-lg shadow-brand-500/20"
+            disabled={actionLoading || (!isEditMode && !joinLocation)} 
+            className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 active:scale-[0.98] transition-all disabled:opacity-70 disabled:active:scale-100 shadow-lg shadow-brand-500/20 mt-2"
           >
             {actionLoading ? <span className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"/> {isEditMode ? 'Updating...' : 'Joining...'}</span> : (isEditMode ? 'Update My Order' : 'Confirm Order')}
           </button>
           <p className="text-xs text-surface-400 text-center">This is a commitment. You are not transferring money to PoolNear.</p>
         </div>
       </Modal>
+
+      {/* Join Location Modal */}
+      {showJoinLocationModal && (
+        <div className="fixed inset-0 bg-surface-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-slide-up">
+            <div className="p-4 border-b border-surface-100 flex justify-between items-center bg-surface-50">
+              <h2 className="font-bold text-surface-900">Change Receiving Location</h2>
+              <button type="button" onClick={() => setShowJoinLocationModal(false)} className="p-1.5 text-surface-400 hover:bg-surface-200 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 bg-white max-h-[70vh] overflow-y-auto">
+              <LocationInput 
+                onLocationSelect={(loc) => {
+                  if (loc) {
+                    setJoinLocation(loc);
+                    setShowJoinLocationModal(false);
+                  }
+                }}
+                defaultDestination={joinLocation?.destination}
+                defaultLatitude={joinLocation?.latitude}
+                defaultLongitude={joinLocation?.longitude}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Order Proof Modal */}
       <Modal isOpen={showOrderProofModal} onClose={() => setShowOrderProofModal(false)} title="Submit Order Proof">

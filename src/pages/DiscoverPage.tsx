@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import { PoolCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
 import { PLATFORM_LIST, RADIUS_OPTIONS, type PlatformKey, type PoolStatusKey } from '../lib/constants';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { useGlobalLocation } from '../hooks/useGlobalLocation';
 
 export function DiscoverPage() {
   const { profile } = useAuth();
@@ -27,9 +28,9 @@ export function DiscoverPage() {
   const [radiusFilter, setRadiusFilter] = useState(profile?.preferred_radius || 500);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const lat = profile?.latitude || 0;
-  const lng = profile?.longitude || 0;
-  const hasLocation = lat !== 0 || lng !== 0;
+  const searchLocation = useGlobalLocation();
+
+  const hasLocation = !!searchLocation;
 
   const fetchPools = useCallback(async () => {
     if (!hasLocation) {
@@ -40,8 +41,8 @@ export function DiscoverPage() {
     setError(null);
     try {
       const data = await getNearbyPools(
-        lat,
-        lng,
+        searchLocation.latitude,
+        searchLocation.longitude,
         radiusFilter,
         platformFilter || undefined,
         statusFilter || undefined
@@ -52,7 +53,7 @@ export function DiscoverPage() {
     } finally {
       setLoading(false);
     }
-  }, [lat, lng, radiusFilter, platformFilter, statusFilter, hasLocation]);
+  }, [searchLocation, radiusFilter, platformFilter, statusFilter, hasLocation]);
 
   useEffect(() => {
     fetchPools();
@@ -86,7 +87,9 @@ export function DiscoverPage() {
 
   return (
     <div className="px-4 py-6 space-y-4">
-      <h1 className="text-xl font-bold text-surface-900">Pools Near You</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold text-surface-900">Pools Near You</h1>
+      </div>
 
       {/* Search & Filter Bar */}
       <div className="flex gap-2">
@@ -289,10 +292,11 @@ export function DiscoverPage() {
         </div>
       )}
 
+      {/* Empty States */}
       {!hasLocation && (
         <EmptyState
-          title="Location required"
-          description="Enable location access to discover pools near you."
+          title="Where are you looking?"
+          description="Enter a location above or use your current location to discover pools near you."
         />
       )}
     </div>

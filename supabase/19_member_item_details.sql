@@ -7,8 +7,7 @@ ALTER TABLE public.requirements
 ADD COLUMN IF NOT EXISTS brand TEXT,
 ADD COLUMN IF NOT EXISTS variant_size TEXT,
 ADD COLUMN IF NOT EXISTS notes TEXT,
-ADD COLUMN IF NOT EXISTS product_url TEXT,
-ADD COLUMN IF NOT EXISTS is_added_to_cart BOOLEAN DEFAULT false;
+ADD COLUMN IF NOT EXISTS product_url TEXT;
 
 -- 2. Update create_pool_atomic to extract and store new item fields
 DROP FUNCTION IF EXISTS public.create_pool_atomic(JSONB, NUMERIC, platform_type, TEXT, NUMERIC, TIMESTAMPTZ, INTEGER, DOUBLE PRECISION, DOUBLE PRECISION, TEXT, INTEGER, TIMESTAMPTZ);
@@ -378,34 +377,3 @@ GRANT EXECUTE ON FUNCTION public.update_my_pool_order_atomic(UUID, JSONB, NUMERI
 -- Add a small function for the orderer to toggle is_added_to_cart
 DROP FUNCTION IF EXISTS public.toggle_item_added_to_cart(UUID, BOOLEAN);
 
-CREATE OR REPLACE FUNCTION public.toggle_item_added_to_cart(p_requirement_id UUID, p_is_added BOOLEAN)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_pool_id UUID;
-  v_orderer_id UUID;
-  v_user_id UUID;
-BEGIN
-  v_user_id := auth.uid();
-  IF v_user_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
-
-  SELECT pool_id INTO v_pool_id FROM public.requirements WHERE id = p_requirement_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Requirement not found'; END IF;
-
-  -- Ensure either the assigned orderer OR the original creator can toggle
-  SELECT COALESCE(orderer_id, creator_id) INTO v_orderer_id FROM public.pools WHERE id = v_pool_id;
-  IF v_user_id != v_orderer_id THEN
-    RAISE EXCEPTION 'Only the orderer can mark items as added to cart';
-  END IF;
-
-  UPDATE public.requirements SET is_added_to_cart = p_is_added WHERE id = p_requirement_id;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.toggle_item_added_to_cart(UUID, BOOLEAN) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.toggle_item_added_to_cart(UUID, BOOLEAN) TO authenticated;
-
-NOTIFY pgrst, 'reload schema';

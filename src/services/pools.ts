@@ -248,13 +248,23 @@ export async function createPool(input: CreatePoolInput, _userId: string) {
 /**
  * Join a pool.
  */
-export async function joinPool(poolId: string, _userId: string, items: Array<{ name: string; unit_price: number; quantity: number }>) {
+export async function joinPool(
+  poolId: string, 
+  _userId: string, 
+  items: Array<{ name: string; unit_price: number; quantity: number }>,
+  destination?: string,
+  latitude?: number,
+  longitude?: number
+) {
   const contribution = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
   
   const { error } = await supabase.rpc('join_pool_atomic', {
     p_pool_id: poolId,
     p_items: items,
     p_contribution: contribution,
+    p_destination: destination,
+    p_latitude: latitude,
+    p_longitude: longitude,
   });
 
   if (error) throw new Error(error.message);
@@ -359,10 +369,12 @@ export async function markOrderDelivered(poolId: string) {
 /**
  * Update receiving location.
  */
-export async function updateReceivingLocation(poolId: string, destination: string) {
+export async function updateReceivingLocation(poolId: string, destination: string, latitude: number, longitude: number) {
   const { error } = await supabase.rpc('update_receiving_location_atomic', {
     p_pool_id: poolId,
     p_destination: destination,
+    p_latitude: latitude,
+    p_longitude: longitude,
   });
   if (error) throw new Error(error.message);
 }
@@ -440,13 +452,7 @@ export async function getPoolRequirements(poolId: string) {
   return (data || []) as Requirement[];
 }
 
-export async function toggleItemAddedToCart(requirementId: string, isAdded: boolean) {
-  const { error } = await supabase.rpc('toggle_item_added_to_cart', {
-    p_requirement_id: requirementId,
-    p_is_added: isAdded
-  });
-  if (error) throw new Error(error.message);
-}
+
 
 // ─── CONNECTIONS ────────────────────────────────────────────────
 
