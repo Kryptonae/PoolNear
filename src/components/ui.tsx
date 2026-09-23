@@ -8,6 +8,7 @@ import { APP_NAME, PLATFORMS, POOL_STATUS, type PlatformKey, type PoolStatusKey 
 import { formatDistance } from '../lib/geo';
 import { formatDistanceToNow } from 'date-fns';
 import { MapPin, Clock, Users, ChevronRight, Package, AlertTriangle, Search } from 'lucide-react';
+import { PlatformLogo } from './PlatformLogo';
 
 // ─── INPUT COMPONENT ──────────────────────────────────────────
 
@@ -72,7 +73,7 @@ export function PlatformBadge({ platform, platformOther, size = 'md' }: Platform
         color: info.color,
       }}
     >
-      <span>{info.icon}</span>
+      <PlatformLogo platform={platform} size={size === 'sm' ? 14 : 16} />
       <span className="truncate max-w-[120px]">{label}</span>
     </span>
   );
@@ -326,7 +327,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         onClick={onClose}
       />
       <div 
-        className="relative w-full sm:max-w-md sm:mx-4 bg-surface-0 rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up max-h-[85dvh] flex flex-col overflow-hidden border border-surface-200"
+        className="relative w-full sm:max-w-md sm:mx-4 bg-surface-0 rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up sm:animate-scale-in max-h-[85dvh] flex flex-col overflow-hidden border border-surface-200"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         <div className="px-6 pt-6 pb-2 flex-shrink-0">

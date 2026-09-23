@@ -86,7 +86,7 @@
   --color-surface-950: var(--surface-950);
 
   /* Typography */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, sans-serif;
   
   /* Layout */
   --width-sidebar-collapsed: 72px;
@@ -133,7 +133,7 @@ body {
 /* ═ BUTTON SYSTEM ═ */
 
 .btn {
-  @apply inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 disabled:pointer-events-none select-none;
+  @apply inline-flex items-center justify-center gap-2 font-semibold transition-all duration-150 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98] active:shadow-none disabled:opacity-50 disabled:active:scale-100 disabled:pointer-events-none select-none;
 }
 
 .btn-lg { @apply px-6 py-3.5 text-base; }
@@ -143,7 +143,7 @@ body {
 
 /* Variants */
 .btn-primary {
-  @apply bg-brand-500 text-white hover:bg-brand-600 shadow-sm shadow-brand-500/20 border border-transparent;
+  @apply bg-brand-500 text-white hover:bg-brand-600 hover:-translate-y-[1px] hover:shadow-md shadow-sm shadow-brand-500/20 border border-transparent;
 }
 
 .btn-secondary {
@@ -169,7 +169,7 @@ body {
 }
 
 .card-hover {
-  @apply hover:border-brand-300 hover:shadow-md hover:shadow-brand-500/5 transition-all duration-300;
+  @apply hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md hover:shadow-brand-500/5 active:scale-[0.99] transition-all duration-200;
 }
 
 /* ═ INPUT SYSTEM ═ */
@@ -224,27 +224,45 @@ body {
   100% { background-position: 200% 0; }
 }
 
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-page-enter {
+    animation: pageEnter 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
 .animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn 0.15s ease-out;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: slideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-slide-down {
-  animation: slideDown 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: slideDown 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-scale-in {
   animation: scaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Staggered animation utility */
-.stagger-1 { animation-delay: 50ms; }
-.stagger-2 { animation-delay: 100ms; }
-.stagger-3 { animation-delay: 150ms; }
-.stagger-4 { animation-delay: 200ms; }
+@media (min-width: 640px) {
+  .sm\:animate-scale-in {
+    animation: scaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+/* Staggered animation utility (fast) */
+.stagger-1 { animation-delay: 30ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 90ms; }
+.stagger-4 { animation-delay: 120ms; }
+.stagger-5 { animation-delay: 150ms; }
 
 /* ═ SKELETON LOADING ═ */
 
@@ -270,8 +288,33 @@ body {
 
 /* ═ BOTTOM NAV SPACING ═ */
 
+:root {
+  --mobile-nav-height: calc(64px + env(safe-area-inset-bottom, 0px));
+  --bottom-action-height: 190px;
+}
+
 .pb-safe {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(24px + var(--mobile-nav-height));
+}
+
+.pb-action-safe {
+  padding-bottom: calc(var(--bottom-action-height) + var(--mobile-nav-height) + 24px);
+}
+
+.bottom-action-safe {
+  bottom: var(--mobile-nav-height);
+}
+
+@media (min-width: 1024px) {
+  .pb-safe {
+    padding-bottom: 3rem;
+  }
+  .pb-action-safe {
+    padding-bottom: calc(var(--bottom-action-height) + 24px);
+  }
+  .bottom-action-safe {
+    bottom: 0;
+  }
 }
 
 /* ═ CHIP COMPONENTS ═ */
@@ -297,7 +340,13 @@ body {
 /* ═ PAGE TRANSITIONS ═ */
 
 .page-enter {
-  animation: fadeIn 0.25s ease-out;
+  animation: pageEnter 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .animate-page-enter {
+    animation: fadeIn 250ms ease-out both;
+  }
 }
 
 /* ═ MOBILE RESPONSIVE UTILITIES ═ */
@@ -309,6 +358,7 @@ body {
 
 input, textarea, select, button {
   max-width: 100%;
+  font-family: inherit;
 }
 
 input[type="number"]::-webkit-inner-spin-button,

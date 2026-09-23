@@ -9,8 +9,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { createPool, getNearbyPools, joinPool } from '../services/pools';
 import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
 import { PLATFORM_LIST, TIME_OPTIONS, RADIUS_OPTIONS, DEFAULT_MIN_ORDER, DEFAULT_MAX_MEMBERS, type PlatformKey } from '../lib/constants';
-import { ArrowLeft, Package, Clock, MapPin, Users, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, Package, Clock, MapPin, Users, ChevronRight, X, Check } from 'lucide-react';
 import { useGlobalLocation } from '../hooks/useGlobalLocation';
+import { PlatformLogo } from '../components/PlatformLogo';
 import { LocationInput } from '../components/LocationInput';
 import { Input } from '../components/ui';
 import toast from 'react-hot-toast';
@@ -197,22 +198,27 @@ export function CreatePoolPage() {
         {step === 1 && (
           <div className="space-y-8 animate-slide-right">
             {/* Platform Selection */}
-            <div className="space-y-3">
-              <label className="text-sm font-bold text-surface-900">Where are you ordering from?</label>
+            <div className="space-y-6">
+              <label className="block text-base font-bold text-surface-900">Where are you ordering from?</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {PLATFORM_LIST.map((p) => (
                   <button
                     key={p.key}
                     type="button"
                     onClick={() => setPlatform(p.key)}
-                    className={`flex items-center gap-2 px-4 py-4 rounded-2xl border-2 transition-all active:scale-[0.98] ${
+                    className={`relative group flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 transition-all duration-300 active:scale-[0.98] animate-fade-in ${
                       platform === p.key
-                        ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
-                        : 'border-surface-200 bg-surface-0 text-surface-600 hover:border-brand-300 hover:bg-surface-50'
+                        ? 'border-brand-500 bg-brand-50 shadow-sm scale-[1.02]'
+                        : 'border-surface-200 bg-surface-0 hover:border-brand-300 hover:bg-surface-50 hover:scale-[1.02]'
                     }`}
                   >
-                    <span className="text-xl">{p.icon}</span>
-                    <span className="font-semibold text-sm">{p.label}</span>
+                    <PlatformLogo platform={p.key} size={28} className={`shadow-sm transition-all duration-300 ${platform === p.key ? 'scale-110 shadow-md ring-2 ring-brand-500/20 ring-offset-1' : 'group-hover:scale-105 group-hover:shadow-md'}`} />
+                    <span className={`font-semibold text-sm transition-colors ${platform === p.key ? 'text-brand-900' : 'text-surface-700 group-hover:text-surface-900'}`}>{p.label}</span>
+                    {platform === p.key && (
+                      <div className="absolute right-3 w-5 h-5 bg-brand-500 rounded-full flex items-center justify-center animate-scale-in shadow-sm">
+                        <Check size={12} className="text-white" strokeWidth={3} />
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -228,8 +234,8 @@ export function CreatePoolPage() {
             </div>
 
             {/* Minimum Order Value */}
-            <div className="space-y-3">
-              <label className="text-sm font-bold text-surface-900">Store minimum order value</label>
+            <div className="space-y-6">
+              <label className="block text-base font-bold text-surface-900">Store minimum order value</label>
               <div className="flex gap-2">
                 {[49, 99, 149, 199].map((val) => (
                   <button
@@ -253,8 +259,8 @@ export function CreatePoolPage() {
             </div>
 
             {/* Required By */}
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm font-bold text-surface-900">
+            <div className="space-y-6">
+              <label className="flex items-center gap-2 text-base font-bold text-surface-900">
                 <Clock size={16} className="text-surface-500" />
                 Required by
               </label>
@@ -294,8 +300,8 @@ export function CreatePoolPage() {
             </div>
 
             {/* Maximum Distance */}
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm font-bold text-surface-900">
+            <div className="space-y-6">
+              <label className="flex items-center gap-2 text-base font-bold text-surface-900">
                 <MapPin size={16} className="text-surface-500" />
                 Maximum matching distance
               </label>
@@ -314,8 +320,8 @@ export function CreatePoolPage() {
             </div>
 
             {/* Max Members */}
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm font-bold text-surface-900">
+            <div className="space-y-6">
+              <label className="flex items-center gap-2 text-base font-bold text-surface-900">
                 <Users size={16} className="text-surface-500" />
                 Maximum pool members: <span className="text-brand-600">{maxMembers}</span>
               </label>

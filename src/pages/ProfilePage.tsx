@@ -6,12 +6,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth, type Profile } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { RADIUS_OPTIONS, APP_NAME } from '../lib/constants';
 import { LoadingState, ErrorState, Input } from '../components/ui';
 import {
   User, MapPin, Shield, CheckCircle2, XCircle, AlertTriangle,
-  Settings, LogOut, ChevronRight, Bell, Palette,
+  Settings, LogOut, ChevronRight, Bell, Palette, Sun, Moon,
 } from 'lucide-react';
 import { PhoneNumberModal } from '../components/PhoneNumberModal';
 import toast from 'react-hot-toast';
@@ -19,6 +20,7 @@ import toast from 'react-hot-toast';
 export function ProfilePage() {
   const { id: viewUserId } = useParams<{ id: string }>();
   const { profile: myProfile, user, hasValidPhone, signOut, updateProfile, refreshProfile } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const isOwnProfile = !viewUserId || viewUserId === user?.id;
@@ -337,6 +339,18 @@ export function ProfilePage() {
                   <ChevronRight size={18} className="text-surface-400 group-hover:text-red-500 group-hover:translate-x-1 transition-all" />
                 </button>
               )}
+              <button
+                onClick={toggleTheme}
+                className="w-full flex items-center justify-between p-4 hover:bg-surface-50 transition-colors group"
+              >
+                <span className="flex items-center gap-3 text-sm font-bold text-surface-900">
+                  <div className="w-8 h-8 rounded-lg bg-surface-100 flex items-center justify-center group-hover:bg-brand-50 transition-colors">
+                    {theme === 'dark' ? <Sun size={18} className="text-amber-500" /> : <Moon size={18} className="text-surface-500 group-hover:text-brand-600" />}
+                  </div>
+                  {theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                </span>
+                <ChevronRight size={18} className="text-surface-400 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
+              </button>
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center justify-between p-4 hover:bg-red-50 transition-colors group"

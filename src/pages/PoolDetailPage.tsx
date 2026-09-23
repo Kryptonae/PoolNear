@@ -25,29 +25,13 @@ import { PhoneNumberModal } from '../components/PhoneNumberModal';
 import { type PoolStatusKey } from '../lib/constants';
 import { formatDistance, haversineDistance } from '../lib/geo';
 import { formatDistanceToNow, format } from 'date-fns';
+import { getSafeUrl } from '../lib/utils';
 import {
   ArrowLeft, MapPin, Clock, Users, UserCheck, ShieldCheck,
-  Upload, CheckCircle2, Flag, Image, X
+  Upload, CheckCircle2, Flag, ExternalLink, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-function getSafeUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  let safeUrl = url.trim();
-  const lowerUrl = safeUrl.toLowerCase();
-  if (!lowerUrl.startsWith('http://') && !lowerUrl.startsWith('https://')) {
-    safeUrl = 'https://' + safeUrl;
-  }
-  try {
-    const parsed = new URL(safeUrl);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.toString();
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
 
 export function PoolDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -270,13 +254,13 @@ export function PoolDetailPage() {
         const oldContribution = myMembership?.contribution || 0;
         const newPoolTotal = (pool!.current_total || 0) - oldContribution + amount;
         if (newPoolTotal < (pool!.minimum_order_value || 0)) {
-          toast.error(`This edit would leave the full pool below the minimum order of —${pool!.minimum_order_value}.`);
+          toast.error(`This edit would leave the full pool below the minimum order of ₹${pool!.minimum_order_value}.`);
           return;
         }
       }
     } else {
       if (isFinalSlot && remainingRequired > 0 && amount < remainingRequired) {
-        toast.error(`Final available spot — minimum —${remainingRequired} needed to reach —${pool!.minimum_order_value} minimum order.`);
+        toast.error(`Final available spot — minimum ₹${remainingRequired} needed to reach ₹${pool!.minimum_order_value} minimum order.`);
         return;
       }
     }
@@ -489,7 +473,7 @@ export function PoolDetailPage() {
   const status = pool.status as PoolStatusKey;
 
   return (
-    <div className="max-w-3xl mx-auto pb-32">
+    <div className="max-w-3xl mx-auto pb-action-safe">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-surface-50/90 backdrop-blur-md px-4 py-4 border-b border-surface-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -561,7 +545,7 @@ export function PoolDetailPage() {
                     onClick={() => handleViewProof(order.proof_image_url!)}
                     className="btn btn-secondary py-2 w-full text-blue-700 border-blue-300 hover:bg-blue-100"
                   >
-                    <Image size={16} /> View Order Proof
+                    <ExternalLink size={16} /> View Order Proof
                   </button>
                 </div>
               )}
@@ -600,7 +584,7 @@ export function PoolDetailPage() {
                     
                     {/* Connection UI */}
                     {isMember && member.user_id !== profile?.id && (isOrderer || member.user_id === pool.orderer_id) && (
-                      <div className="mt-2">
+                      <div className="mt-3">
                         {(() => {
                           const connection = connections.find(c => 
                             (c.requester_id === member.user_id && c.receiver_id === profile?.id) ||
@@ -728,9 +712,9 @@ export function PoolDetailPage() {
                                   href={getSafeUrl(req.product_url)!}
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  className="text-xs font-semibold bg-surface-100 hover:bg-surface-200 text-surface-700 py-1.5 px-3 rounded-lg transition-colors inline-flex items-center gap-1"
+                                  className="group text-xs font-bold bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100 py-1.5 px-3 rounded-lg transition-colors inline-flex items-center gap-1.5 active:scale-[0.98]"
                                 >
-                                  Link →
+                                  View Product <ExternalLink size={12} className="transition-transform duration-200 group-hover:translate-x-[2px] group-hover:-translate-y-[2px]" />
                                 </a>
                               )}
                             </div>
@@ -771,7 +755,7 @@ export function PoolDetailPage() {
                         </div>
                         {member.payment_proof_url && (
                           <button onClick={() => handleViewProof(member.payment_proof_url!)} className="text-xs font-semibold text-brand-600 hover:underline flex items-center justify-end gap-1">
-                            <Image size={12} /> View Proof
+                            <ExternalLink size={12} /> View Proof
                           </button>
                         )}
                       </div>
@@ -848,7 +832,7 @@ export function PoolDetailPage() {
       </div>
 
       {/* — ACTION BUTTONS — */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-surface-50/90 backdrop-blur-md border-t border-surface-200 z-40">
+      <div className="fixed bottom-action-safe left-0 right-0 p-4 bg-surface-50/90 backdrop-blur-md border-t border-surface-200 z-40">
         <div className="max-w-3xl mx-auto space-y-3">
           {/* Join */}
           {canJoin && (

@@ -269,25 +269,26 @@ export function DiscoverPage() {
       {/* Pool Cards */}
       {!loading && !error && filteredPools.length > 0 && (
         <div className="space-y-3">
-          {filteredPools.map((pool) => (
-            <PoolCard
-              key={pool.pool_id}
-              pool={{
-                id: pool.pool_id,
-                platform: pool.platform,
-                platform_other: pool.platform_other,
-                minimum_order_value: pool.minimum_order_value,
-                current_total: pool.current_total,
-                max_members: pool.max_members,
-                destination: pool.destination,
-                status: pool.status,
-                required_by: pool.required_by,
-                expires_at: pool.expires_at,
-              }}
-              distanceMeters={pool.distance_meters}
-              memberCount={Number(pool.member_count)}
-              onClick={() => navigate(`/pool/${pool.pool_id}`)}
-            />
+          {filteredPools.map((pool, index) => (
+            <div key={pool.pool_id} className={`animate-slide-up stagger-${Math.min(index + 1, 5)}`}>
+              <PoolCard
+                pool={{
+                  id: pool.pool_id,
+                  platform: pool.platform,
+                  platform_other: pool.platform_other,
+                  minimum_order_value: pool.minimum_order_value,
+                  current_total: pool.current_total,
+                  max_members: pool.max_members,
+                  destination: pool.destination,
+                  status: pool.status,
+                  required_by: pool.required_by,
+                  expires_at: pool.expires_at,
+                }}
+                distanceMeters={pool.distance_meters}
+                memberCount={Number(pool.member_count)}
+                onClick={() => navigate(`/pool/${pool.pool_id}`)}
+              />
+            </div>
           ))}
         </div>
       )}

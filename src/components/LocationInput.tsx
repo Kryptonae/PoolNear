@@ -295,7 +295,7 @@ export function LocationInput({
                       key={i}
                       type="button"
                       onClick={() => handleSelectResult(res)}
-                      className="w-full text-left p-3 hover:bg-brand-50 transition-colors flex gap-3 items-start group"
+                      className={`w-full text-left p-3 hover:bg-brand-50 transition-colors flex gap-3 items-start group animate-fade-in stagger-${Math.min(i + 1, 5)} active:bg-brand-100`}
                     >
                       <MapPin size={18} className="text-surface-400 group-hover:text-brand-500 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">

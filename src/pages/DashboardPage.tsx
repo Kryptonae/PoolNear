@@ -12,8 +12,9 @@ import {
   type Pool, type Requirement,
 } from '../services/pools';
 import { PoolCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
-import { LayoutDashboard, Package, Users, CheckCircle2, Clock, Plus, ChevronRight, XCircle } from 'lucide-react';
+import { LayoutDashboard, Package, Users, CheckCircle2, Clock, Plus, ChevronRight, XCircle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getSafeUrl } from '../lib/utils';
 
 type TabKey = 'requirements' | 'active' | 'completed';
 
@@ -253,12 +254,13 @@ export function DashboardPage() {
               />
             ) : (
               <div className="space-y-4">
-                {activePools.map((item) => (
-                  <PoolCard
-                    key={item.pool.id}
-                    pool={item.pool}
-                    onClick={() => navigate(`/pool/${item.pool.id}`)}
-                  />
+                {activePools.map((item, index) => (
+                  <div key={item.pool.id} className={`animate-slide-up stagger-${Math.min(index + 1, 5)}`}>
+                    <PoolCard
+                      pool={item.pool}
+                      onClick={() => navigate(`/pool/${item.pool.id}`)}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -284,16 +286,29 @@ export function DashboardPage() {
               />
             ) : (
               <div className="space-y-4">
-                {requirements.map((req) => (
+                {requirements.map((req, index) => (
                   <div
                     key={req.id}
                     onClick={() => req.pool_id ? navigate(`/pool/${req.pool_id}`) : undefined}
-                    className={`card p-5 transition-all ${req.pool_id ? 'cursor-pointer hover:border-brand-300 hover:shadow-md active:scale-[0.98]' : 'bg-surface-0/50'}`}
+                    className={`card p-5 transition-all animate-slide-up stagger-${Math.min(index + 1, 5)} ${req.pool_id ? 'cursor-pointer hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:scale-[0.98]' : 'bg-surface-0/50'}`}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <p className={`font-bold text-lg ${req.status === 'cancelled' ? 'text-surface-400 line-through' : 'text-surface-900'}`}>{req.product_description}</p>
                         <p className="text-sm font-medium text-surface-500 mt-1">₹{req.amount} × Qty {req.quantity}</p>
+                        {req.product_url && getSafeUrl(req.product_url) && (
+                          <div className="mt-2">
+                            <a 
+                              href={getSafeUrl(req.product_url)!}
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="group text-xs font-bold bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100 py-1.5 px-3 rounded-lg transition-colors inline-flex items-center gap-1.5 active:scale-[0.98]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              View Product <ExternalLink size={12} className="transition-transform duration-200 group-hover:translate-x-[2px] group-hover:-translate-y-[2px]" />
+                            </a>
+                          </div>
+                        )}
                       </div>
                       <span className={`badge ${
                         req.status === 'active' ? 'badge-warning' :
@@ -349,12 +364,13 @@ export function DashboardPage() {
               />
             ) : (
               <div className="space-y-4">
-                {completedPools.map((item) => (
-                  <PoolCard
-                    key={item.pool.id}
-                    pool={item.pool}
-                    onClick={() => navigate(`/pool/${item.pool.id}`)}
-                  />
+                {completedPools.map((item, index) => (
+                  <div key={item.pool.id} className={`animate-slide-up stagger-${Math.min(index + 1, 5)}`}>
+                    <PoolCard
+                      pool={item.pool}
+                      onClick={() => navigate(`/pool/${item.pool.id}`)}
+                    />
+                  </div>
                 ))}
               </div>
             )}

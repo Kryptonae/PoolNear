@@ -228,7 +228,8 @@ export function Layout() {
               <ChevronDown size={14} className="text-surface-400 shrink-0" />
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <ThemeToggle />
               <NavLink
                 to="/notifications"
                 className="relative w-9 h-9 rounded-full bg-surface-100 flex items-center justify-center text-surface-600 hover:bg-surface-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
