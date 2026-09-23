@@ -1,18 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
 // PoolNear — Home Page
-// Location permission, nearby pools preview, and main CTA
+// Location permission and main Create/Discover CTA
 // ═══════════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { getNearbyPools, getNotifications, type PoolWithDistance } from '../services/pools';
-import { findBestMatches, getMatchQuality, type MatchCandidate } from '../services/matching';
-import { supabase } from '../lib/supabase';
-import { PoolCard, LocationPermissionCard, EmptyState, SkeletonCard, ErrorState } from '../components/ui';
-import { RADIUS_OPTIONS, DEFAULT_MIN_ORDER } from '../lib/constants';
-import { MapPin, Plus, ArrowRight, Sparkles, ChevronDown, Bell } from 'lucide-react';
+import { getNotifications } from '../services/pools';
+import { LocationPermissionCard } from '../components/ui';
+import { RADIUS_OPTIONS } from '../lib/constants';
+import { MapPin, Bell, ChevronDown, ShoppingBag, Map, Search, PackagePlus, Users, CheckCircle2, Check, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function HomePage() {
@@ -20,47 +18,11 @@ export function HomePage() {
   const { coordinates, loading: geoLoading, error: geoError, permissionState, requestLocation } = useGeolocation();
   const navigate = useNavigate();
 
-  const [pools, setPools] = useState<PoolWithDistance[]>([]);
-  const [bestMatch, setBestMatch] = useState<MatchCandidate | null>(null);
-  const [poolsLoading, setPoolsLoading] = useState(false);
-  const [poolsError, setPoolsError] = useState<string | null>(null);
   const [showRadiusMenu, setShowRadiusMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const radius = profile?.preferred_radius || 500;
   const hasLocation = coordinates !== null || (profile?.latitude && profile?.longitude);
-  const lat = coordinates?.latitude || profile?.latitude || 0;
-  const lng = coordinates?.longitude || profile?.longitude || 0;
-
-  const fetchPools = useCallback(async () => {
-    if (!hasLocation) return;
-    setPoolsLoading(true);
-    setPoolsError(null);
-    try {
-      const data = await getNearbyPools(lat, lng, radius);
-      setPools(data);
-
-      // Run smart matching
-      if (data.length > 0) {
-        const matches = findBestMatches(data, {
-          platform: data[0].platform, // Use first pool's platform as default
-          amount: 30, // Typical small order amount
-          latitude: lat,
-          longitude: lng,
-          maximumDistance: radius,
-          requiredBy: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours
-          minimumOrderValue: DEFAULT_MIN_ORDER,
-        });
-        setBestMatch(matches.length > 0 ? matches[0] : null);
-      } else {
-        setBestMatch(null);
-      }
-    } catch (err) {
-      setPoolsError((err as Error).message);
-    } finally {
-      setPoolsLoading(false);
-    }
-  }, [lat, lng, radius, hasLocation]);
 
   const fetchNotifications = useCallback(async () => {
     if (!profile?.id) return;
@@ -71,25 +33,6 @@ export function HomePage() {
       // Silent fail for notifications count
     }
   }, [profile?.id]);
-
-  useEffect(() => {
-    fetchPools();
-
-    // Realtime subscription for early completion hiding
-    const channel = supabase.channel('home_pools_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pools' },
-        () => {
-          fetchPools();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchPools]);
 
   useEffect(() => {
     fetchNotifications();
@@ -111,7 +54,7 @@ export function HomePage() {
   const radiusLabel = radius >= 1000 ? `${radius / 1000} km` : `${radius} m`;
 
   return (
-    <div className="px-4 py-6 space-y-6">
+    <div className="px-4 py-6 max-w-4xl mx-auto space-y-8 animate-fade-in">
       {/* Location Permission */}
       {!hasLocation && (
         <LocationPermissionCard
@@ -124,7 +67,7 @@ export function HomePage() {
 
       {/* Location & Radius Header */}
       {hasLocation && (
-        <div className="bg-white rounded-2xl border border-surface-200 p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl border border-surface-200 p-4 shadow-sm animate-slide-up">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
@@ -185,128 +128,130 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Smart Match Banner */}
-      {hasLocation && bestMatch && bestMatch.score >= 50 && (
-        <button
-          onClick={() => navigate(`/pool/${bestMatch.pool.pool_id}`)}
-          className="w-full bg-gradient-to-r from-brand-500 to-emerald-500 rounded-2xl p-4 text-white text-left hover:shadow-lg hover:shadow-brand-500/20 transition-all active:scale-[0.98] animate-slide-up"
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles size={16} />
-            <span className="text-sm font-semibold opacity-90">
-              {getMatchQuality(bestMatch.score).emoji} {getMatchQuality(bestMatch.score).label}
-            </span>
-            <span className="text-xs opacity-70 ml-auto">Score: {bestMatch.score}/100</span>
-          </div>
-          <p className="text-sm opacity-80">
-            {bestMatch.reasons.slice(0, 2).join(' · ')}
-          </p>
-          <div className="flex items-center gap-1 mt-2 text-sm font-semibold">
-            View Pool <ArrowRight size={14} />
-          </div>
-        </button>
-      )}
+      {/* Hero Section */}
+      <section className="text-center py-6 md:py-10 space-y-4">
+        <h1 className="text-3xl md:text-5xl font-extrabold text-surface-900 tracking-tight">
+          Group your order.<br className="hidden md:block" /> Save more. Order together.
+        </h1>
+        <p className="text-surface-600 text-base md:text-lg max-w-xl mx-auto">
+          Create a group order or find people nearby who are already ordering.
+        </p>
+      </section>
 
-      {/* Create CTA */}
+      {/* Two Primary Actions */}
       {hasLocation && (
-        <button
-          onClick={() => navigate('/create')}
-          className="w-full bg-white rounded-2xl border-2 border-dashed border-surface-300 p-5 flex items-center justify-center gap-3 text-surface-600 hover:border-brand-400 hover:text-brand-600 hover:bg-brand-50/30 transition-all active:scale-[0.98] group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-surface-100 group-hover:bg-brand-100 flex items-center justify-center transition-colors">
-            <Plus size={22} className="group-hover:text-brand-600 transition-colors" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold text-sm">Create Requirement</p>
-            <p className="text-xs text-surface-400">Need something? Find people nearby to pool with</p>
-          </div>
-        </button>
-      )}
-
-      {/* Nearby Pools Section */}
-      {hasLocation && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-surface-900">Pools Near You</h2>
-            {pools.length > 0 && (
-              <button
-                onClick={() => navigate('/discover')}
-                className="text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-0.5"
-              >
-                See All <ArrowRight size={14} />
-              </button>
-            )}
-          </div>
-
-          {/* Loading */}
-          {poolsLoading && (
-            <div className="space-y-3">
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
+        <section className="grid md:grid-cols-2 gap-4">
+          <button
+            onClick={() => navigate('/create')}
+            className="group relative overflow-hidden bg-white rounded-3xl border border-surface-200 p-6 md:p-8 text-left hover:border-brand-300 hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 active:scale-[0.98]"
+          >
+            <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-x-4 group-hover:translate-x-0 text-brand-500">
+              <ArrowRight size={24} />
             </div>
-          )}
-
-          {/* Error */}
-          {poolsError && !poolsLoading && (
-            <ErrorState message={poolsError} onRetry={fetchPools} />
-          )}
-
-          {/* Empty */}
-          {!poolsLoading && !poolsError && pools.length === 0 && (
-            <EmptyState
-              title="No pools nearby right now"
-              description="Be the first! Create a requirement and others nearby will find you."
-              action={
-                <div className="flex flex-col gap-2 w-full max-w-xs">
-                  <button
-                    onClick={() => navigate('/create')}
-                    className="w-full py-3 bg-brand-500 text-white rounded-xl font-semibold hover:bg-brand-600 transition-colors active:scale-[0.98]"
-                  >
-                    + Create New Pool
-                  </button>
-                  <button
-                    onClick={() => handleRadiusChange(Math.min(radius * 2, 2000))}
-                    className="w-full py-3 text-surface-600 bg-surface-100 rounded-xl font-medium hover:bg-surface-200 transition-colors"
-                  >
-                    Expand Radius to {Math.min(radius * 2, 2000) >= 1000 ? `${Math.min(radius * 2, 2000) / 1000} km` : `${Math.min(radius * 2, 2000)} m`}
-                  </button>
-                </div>
-              }
-            />
-          )}
-
-          {/* Pool Cards */}
-          {!poolsLoading && !poolsError && pools.length > 0 && (
-            <div className="space-y-3">
-              {pools.slice(0, 5).map((pool) => (
-                <PoolCard
-                  key={pool.pool_id}
-                  pool={{
-                    id: pool.pool_id,
-                    platform: pool.platform,
-                    platform_other: pool.platform_other,
-                    minimum_order_value: pool.minimum_order_value,
-                    current_total: pool.current_total,
-                    max_members: pool.max_members,
-                    destination: pool.destination,
-                    status: pool.status,
-                    required_by: pool.required_by,
-                    expires_at: pool.expires_at,
-                  }}
-                  distanceMeters={pool.distance_meters}
-                  memberCount={Number(pool.member_count)}
-                  onClick={() => navigate(`/pool/${pool.pool_id}`)}
-                />
-              ))}
+            <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+              <ShoppingBag size={28} className="text-brand-600" />
             </div>
-          )}
+            <h2 className="text-xl md:text-2xl font-bold text-surface-900 mb-2">Create Your Order</h2>
+            <p className="text-surface-500 text-sm md:text-base leading-relaxed">
+              Start a group order and invite people nearby.
+            </p>
+          </button>
+
+          <button
+            onClick={() => navigate('/discover')}
+            className="group relative overflow-hidden bg-surface-900 rounded-3xl border border-surface-800 p-6 md:p-8 text-left hover:border-surface-700 hover:shadow-xl hover:shadow-surface-900/20 transition-all duration-300 active:scale-[0.98]"
+          >
+            <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-x-4 group-hover:translate-x-0 text-surface-400">
+              <ArrowRight size={24} />
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-surface-800 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+              <Map size={28} className="text-white" />
+            </div>
+            <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Find Nearby Orders</h2>
+            <p className="text-surface-400 text-sm md:text-base leading-relaxed">
+              Discover active group orders near your location.
+            </p>
+          </button>
         </section>
       )}
 
+      {/* How PoolNear Works - Poster Section */}
+      <section className="bg-surface-50 rounded-3xl p-6 md:p-8 mt-4 border border-surface-100">
+        <h3 className="text-lg font-bold text-surface-900 mb-8 text-center">How PoolNear Works</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-4 relative">
+          {/* Connecting line for desktop */}
+          <div className="hidden md:block absolute top-6 left-[10%] right-[10%] h-0.5 bg-surface-200 -z-0" />
+          
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
+              <Search size={20} />
+            </div>
+            <h4 className="font-semibold text-surface-900 mb-1">Create / Find</h4>
+            <p className="text-xs text-surface-500">Start or join an order</p>
+          </div>
+          
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
+              <PackagePlus size={20} />
+            </div>
+            <h4 className="font-semibold text-surface-900 mb-1">Add products</h4>
+            <p className="text-xs text-surface-500">List what you need</p>
+          </div>
+          
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
+              <Users size={20} />
+            </div>
+            <h4 className="font-semibold text-surface-900 mb-1">Join together</h4>
+            <p className="text-xs text-surface-500">Meet minimums together</p>
+          </div>
+
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
+              <CheckCircle2 size={20} />
+            </div>
+            <h4 className="font-semibold text-surface-900 mb-1">Complete order</h4>
+            <p className="text-xs text-surface-500">Place order & receive</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Why PoolNear - Trust Section */}
+      <section className="pt-2 pb-6">
+        <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider text-center mb-6">
+          Why PoolNear?
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-4 md:px-0">
+          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Check size={16} className="text-emerald-600" />
+            </div>
+            <span className="text-sm font-medium text-surface-700">Clear order details</span>
+          </div>
+          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Check size={16} className="text-emerald-600" />
+            </div>
+            <span className="text-sm font-medium text-surface-700">Location-aware discovery</span>
+          </div>
+          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Check size={16} className="text-emerald-600" />
+            </div>
+            <span className="text-sm font-medium text-surface-700">Simple group ordering</span>
+          </div>
+          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Check size={16} className="text-emerald-600" />
+            </div>
+            <span className="text-sm font-medium text-surface-700">Transparent participation</span>
+          </div>
+        </div>
+      </section>
+
       {/* Geo Error Toast */}
       {geoError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 animate-slide-up">
           <p className="font-medium mb-1">Location Error</p>
           <p className="text-amber-600">{geoError}</p>
         </div>
