@@ -1,7 +1,7 @@
-// ═
-// ═
-// ═
-// ═
+// ₹
+// PoolNear ₹ Dashboard Page
+// User's requirements, active pools, joined pools, completed pools
+// ₹
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -293,7 +293,7 @@ export function DashboardPage() {
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <p className={`font-bold text-lg ${req.status === 'cancelled' ? 'text-surface-400 line-through' : 'text-surface-900'}`}>{req.product_description}</p>
-                        <p className="text-sm font-medium text-surface-500 mt-1">₹{req.amount} × Qty {req.quantity}</p>
+                        <p className="text-sm font-medium text-surface-500 mt-1">₹{req.amount} ₹ Qty {req.quantity}</p>
                       </div>
                       <span className={`badge ${
                         req.status === 'active' ? 'badge-warning' :
@@ -304,7 +304,7 @@ export function DashboardPage() {
                       }`}>
                         {req.status === 'active' ? '₹ Searching' :
                          req.status === 'matched' ? '₹ Matched' :
-                         req.status === 'fulfilled' ? '🎉 Fulfilled' :
+                         req.status === 'fulfilled' ? '₹ Fulfilled' :
                          req.status === 'cancelled' ? '₹ Cancelled' :
                          req.status}
                       </span>

@@ -1,7 +1,7 @@
-// ═══════════════════════════════════════════════════════════════════
-// PoolNear — Admin Dashboard Page
+// ₹
+// PoolNear ₹ Admin Dashboard Page
 // Admin-only page for managing users, pools, reports, and stats
-// ═══════════════════════════════════════════════════════════════════
+// ₹
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -196,7 +196,7 @@ export function AdminPage() {
                   <span className="font-bold text-surface-900">
                     {stats.completedPools + stats.failedPools > 0
                       ? `${((stats.completedPools / (stats.completedPools + stats.failedPools)) * 100).toFixed(1)}%`
-                      : '—'
+                      : '₹'
                     }
                   </span>
                 </div>
@@ -205,7 +205,7 @@ export function AdminPage() {
                   <span className="font-bold text-surface-900">
                     {stats.totalUsers > 0
                       ? ((stats.activePools + stats.completedPools + stats.failedPools) / stats.totalUsers).toFixed(1)
-                      : '—'
+                      : '₹'
                     }
                   </span>
                 </div>

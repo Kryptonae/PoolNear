@@ -1,37 +1,99 @@
 @import "tailwindcss";
 
-/* ═══════════════════════════════════════════════════════════════════
-   PoolNear — Global Styles & Design Tokens
-   ═══════════════════════════════════════════════════════════════════ */
+/* ═
+   PoolNear ═ Global Styles & Design Tokens (Consumer Launch)
+   ═ */
 
-@theme {
-  --color-brand-50: #ECFDF5;
-  --color-brand-100: #D1FAE5;
-  --color-brand-200: #A7F3D0;
-  --color-brand-300: #6EE7B7;
-  --color-brand-400: #34D399;
-  --color-brand-500: #10B981;
-  --color-brand-600: #059669;
-  --color-brand-700: #047857;
-  --color-brand-800: #065F46;
-  --color-brand-900: #064E3B;
+:root {
+  /* Surface Colors (Light) - Slate & White */
+  --surface-0: #FFFFFF; /* Elevated cards and sheets */
+  --surface-50: #F8FAFC; /* App canvas background */
+  --surface-100: #F1F5F9; /* Subtle fills, inputs, hover states */
+  --surface-200: #E2E8F0; /* Borders, dividers */
+  --surface-300: #CBD5E1;
+  --surface-400: #94A3B8;
+  --surface-500: #64748B;
+  --surface-600: #475569; /* Muted text */
+  --surface-700: #334155;
+  --surface-800: #1E293B;
+  --surface-900: #0F172A; /* Primary text */
+  --surface-950: #020617;
 
-  --color-surface-50: #F8FAFC;
-  --color-surface-100: #F1F5F9;
-  --color-surface-200: #E2E8F0;
-  --color-surface-300: #CBD5E1;
-  --color-surface-400: #94A3B8;
-  --color-surface-500: #64748B;
-  --color-surface-600: #475569;
-  --color-surface-700: #334155;
-  --color-surface-800: #1E293B;
-  --color-surface-900: #0F172A;
-  --color-surface-950: #020617;
-
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Brand Colors (Light) - Restrained Emerald */
+  --brand-50: #ECFDF5;
+  --brand-100: #D1FAE5;
+  --brand-200: #A7F3D0;
+  --brand-300: #6EE7B7;
+  --brand-400: #34D399;
+  --brand-500: #10B981; /* Primary brand action */
+  --brand-600: #059669; /* Hover state */
+  --brand-700: #047857;
+  --brand-800: #065F46;
+  --brand-900: #064E3B;
 }
 
-/* ─── BASE STYLES ────────────────────────────────────────────── */
+.dark {
+  /* Surface Colors (Dark) - Deep Slate */
+  --surface-0: #0F172A; /* Elevated cards and sheets */
+  --surface-50: #020617; /* App canvas background */
+  --surface-100: #1E293B; /* Subtle fills, inputs, hover states */
+  --surface-200: #334155; /* Borders, dividers */
+  --surface-300: #475569;
+  --surface-400: #64748B;
+  --surface-500: #94A3B8;
+  --surface-600: #CBD5E1; /* Muted text */
+  --surface-700: #E2E8F0;
+  --surface-800: #F1F5F9;
+  --surface-900: #F8FAFC; /* Primary text */
+  --surface-950: #FFFFFF;
+
+  /* Brand Colors (Dark) - Adjusted for contrast */
+  --brand-50: #022C22; 
+  --brand-100: #064E3B;
+  --brand-200: #065F46;
+  --brand-300: #047857;
+  --brand-400: #059669;
+  --brand-500: #10B981; /* Primary brand action */
+  --brand-600: #34D399; /* Hover state */
+  --brand-700: #6EE7B7;
+  --brand-800: #A7F3D0;
+  --brand-900: #ECFDF5;
+}
+
+@theme {
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  --color-surface-0: var(--surface-0);
+  --color-surface-50: var(--surface-50);
+  --color-surface-100: var(--surface-100);
+  --color-surface-200: var(--surface-200);
+  --color-surface-300: var(--surface-300);
+  --color-surface-400: var(--surface-400);
+  --color-surface-500: var(--surface-500);
+  --color-surface-600: var(--surface-600);
+  --color-surface-700: var(--surface-700);
+  --color-surface-800: var(--surface-800);
+  --color-surface-900: var(--surface-900);
+  --color-surface-950: var(--surface-950);
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  
+  /* Layout */
+  --width-sidebar-collapsed: 72px;
+  --width-sidebar-expanded: 260px;
+}
+
+/* ═ BASE STYLES ═ */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -58,7 +120,69 @@ body {
   }
 }
 
-/* ─── CUSTOM SCROLLBAR ───────────────────────────────────────── */
+/* ═ TYPOGRAPHY CLASSES ═ */
+/* For strong, consistent hierarchy */
+.text-display { @apply text-4xl md:text-5xl font-extrabold tracking-tight text-surface-900; }
+.text-title-1 { @apply text-2xl md:text-3xl font-bold tracking-tight text-surface-900; }
+.text-title-2 { @apply text-xl md:text-2xl font-bold tracking-tight text-surface-900; }
+.text-title-3 { @apply text-lg font-bold text-surface-900; }
+.text-body { @apply text-base text-surface-600 leading-relaxed; }
+.text-body-sm { @apply text-sm text-surface-600 leading-relaxed; }
+.text-label { @apply text-xs font-semibold text-surface-500 uppercase tracking-wide; }
+
+/* ═ BUTTON SYSTEM ═ */
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 disabled:pointer-events-none select-none;
+}
+
+.btn-lg { @apply px-6 py-3.5 text-base; }
+.btn-md { @apply px-4 py-2.5 text-sm; }
+.btn-sm { @apply px-3 py-1.5 text-xs rounded-lg; }
+.btn-icon { @apply p-2.5 rounded-xl aspect-square; }
+
+/* Variants */
+.btn-primary {
+  @apply bg-brand-500 text-white hover:bg-brand-600 shadow-sm shadow-brand-500/20 border border-transparent;
+}
+
+.btn-secondary {
+  @apply bg-surface-0 text-surface-900 hover:bg-surface-50 border border-surface-200 shadow-sm;
+}
+
+.btn-tertiary {
+  @apply bg-transparent text-surface-600 hover:bg-surface-100 hover:text-surface-900 border border-transparent;
+}
+
+.btn-danger {
+  @apply bg-red-50 text-red-700 hover:bg-red-100 border border-red-200;
+}
+
+.btn-brand-soft {
+  @apply bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200;
+}
+
+/* ═ CARD SYSTEM ═ */
+
+.card {
+  @apply bg-surface-0 border border-surface-200 rounded-2xl shadow-sm overflow-hidden;
+}
+
+.card-hover {
+  @apply hover:border-brand-300 hover:shadow-md hover:shadow-brand-500/5 transition-all duration-300;
+}
+
+/* ═ INPUT SYSTEM ═ */
+
+.input-field {
+  @apply w-full px-4 py-3 bg-surface-0 border border-surface-200 rounded-xl text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all;
+}
+
+.input-label {
+  @apply block text-sm font-medium text-surface-700 mb-1.5;
+}
+
+/* ═ CUSTOM SCROLLBAR ═ */
 
 ::-webkit-scrollbar {
   width: 6px;
@@ -73,7 +197,7 @@ body {
   border-radius: 3px;
 }
 
-/* ─── ANIMATIONS ─────────────────────────────────────────────── */
+/* ═ ANIMATIONS ═ */
 
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -81,17 +205,17 @@ body {
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-16px); }
+  from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -100,129 +224,93 @@ body {
   100% { background-position: 200% 0; }
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(2.2); opacity: 0; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-slide-down {
-  animation: slideDown 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: slideDown 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: scaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* ─── SKELETON LOADING ───────────────────────────────────────── */
+/* Staggered animation utility */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+
+/* ═ SKELETON LOADING ═ */
 
 .skeleton {
   background: linear-gradient(
     90deg,
-    var(--color-surface-200) 25%,
-    var(--color-surface-100) 50%,
-    var(--color-surface-200) 75%
+    var(--color-surface-100) 25%,
+    var(--color-surface-200) 50%,
+    var(--color-surface-100) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 8px;
 }
 
-/* ─── GLASS EFFECT ───────────────────────────────────────────── */
+/* ═ GLASS EFFECT ═ */
 
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(var(--color-surface-50), 0.85);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
 }
 
-/* ─── BOTTOM NAV SPACING ─────────────────────────────────────── */
+/* ═ BOTTOM NAV SPACING ═ */
 
 .pb-safe {
   padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
-/* ─── CHIP COMPONENTS ────────────────────────────────────────── */
+/* ═ CHIP COMPONENTS ═ */
 
 .chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1.5px solid var(--color-surface-200);
-  background: white;
-  color: var(--color-surface-600);
-  user-select: none;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.chip:hover {
-  border-color: var(--color-brand-400);
-  color: var(--color-brand-700);
+  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all border border-surface-200 bg-surface-0 text-surface-600 select-none whitespace-nowrap shrink-0 hover:border-brand-300 hover:text-brand-700;
 }
 
 .chip.active {
-  background: var(--color-brand-50);
-  border-color: var(--color-brand-500);
-  color: var(--color-brand-700);
-  font-weight: 600;
+  @apply bg-brand-50 border-brand-500 text-brand-700 font-semibold;
 }
 
-/* ─── PROGRESS BAR ───────────────────────────────────────────── */
+/* ═ PROGRESS BAR ═ */
 
 .progress-bar {
-  width: 100%;
-  height: 8px;
-  background: var(--color-surface-200);
-  border-radius: 4px;
-  overflow: hidden;
+  @apply w-full h-2 bg-surface-100 rounded-full overflow-hidden border border-surface-200;
 }
 
 .progress-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  background: linear-gradient(90deg, var(--color-brand-400), var(--color-brand-600));
+  @apply h-full rounded-full transition-all duration-500 bg-brand-500;
 }
 
-/* ─── PAGE TRANSITIONS ───────────────────────────────────────── */
+/* ═ PAGE TRANSITIONS ═ */
 
 .page-enter {
-  animation: slideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: fadeIn 0.25s ease-out;
 }
 
-/* ─── MOBILE RESPONSIVE UTILITIES ────────────────────────────── */
+/* ═ MOBILE RESPONSIVE UTILITIES ═ */
 
-/* Prevent any child from exceeding viewport width */
 #root {
   overflow-x: hidden;
   width: 100%;
 }
 
-/* Ensure all form elements respect container width */
 input, textarea, select, button {
   max-width: 100%;
 }
 
-/* Number input: hide spinners for cleaner look */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -231,3 +319,4 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+

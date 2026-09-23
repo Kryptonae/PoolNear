@@ -1,0 +1,191 @@
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PoolNear — Home Page
+// Location permission and main Create/Discover CTA
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useGeolocation } from '../hooks/useGeolocation';
+import { LocationPermissionCard } from '../components/ui';
+import { RADIUS_OPTIONS } from '../lib/constants';
+import { MapPin, ChevronDown, ShoppingBag, Map, Search, PackagePlus, Users, CheckCircle2, ArrowRight, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+export function HomePage() {
+  const { profile, updateProfile } = useAuth();
+  const { coordinates, loading: geoLoading, error: geoError, permissionState, requestLocation } = useGeolocation();
+  const navigate = useNavigate();
+
+  const [showRadiusMenu, setShowRadiusMenu] = useState(false);
+  const radius = profile?.preferred_radius || 500;
+  const hasLocation = coordinates !== null || (profile?.latitude && profile?.longitude);
+
+  // Try to get location on mount if previously granted
+  useEffect(() => {
+    if (profile?.location_permission && !coordinates) {
+      requestLocation();
+    }
+  }, [profile?.location_permission]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleRadiusChange(newRadius: number) {
+    setShowRadiusMenu(false);
+    await updateProfile({ preferred_radius: newRadius });
+    toast.success(`Radius updated to ${newRadius >= 1000 ? `${newRadius / 1000} km` : `${newRadius} m`}`);
+  }
+
+  const radiusLabel = radius >= 1000 ? `${radius / 1000} km` : `${radius} m`;
+
+  return (
+    <div className="space-y-10 animate-fade-in pb-10">
+      {/* Location Permission */}
+      {!hasLocation && (
+        <LocationPermissionCard
+          onAllow={requestLocation}
+          onSkip={() => {}}
+          loading={geoLoading}
+          denied={permissionState === 'denied'}
+        />
+      )}
+
+      {/* Location & Radius Header */}
+      {hasLocation && (
+        <div className="card p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
+              <MapPin size={20} className="text-brand-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-surface-900 truncate">
+                {profile?.area || 'Your Location'}
+              </p>
+              <p className="text-xs text-surface-500">
+                Matching radius: <span className="font-semibold text-brand-600">{radiusLabel}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Radius Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowRadiusMenu(!showRadiusMenu)}
+                className="btn btn-tertiary btn-sm"
+              >
+                Change <ChevronDown size={14} />
+              </button>
+              {showRadiusMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowRadiusMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 card py-1 w-36 z-50 animate-scale-in">
+                    {RADIUS_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleRadiusChange(opt.value)}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          opt.value === radius ? 'text-brand-600 font-semibold bg-brand-50' : 'text-surface-700 hover:bg-surface-50'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contextual Welcome */}
+      <section className="text-center space-y-2">
+        <h1 className="text-title-1">What would you like to do?</h1>
+        <p className="text-body text-surface-500">Join a nearby order or start your own to save on delivery and minimums.</p>
+      </section>
+
+      {/* Two Primary Actions */}
+      {hasLocation && (
+        <section className="grid md:grid-cols-2 gap-4 lg:gap-6">
+          <button
+            onClick={() => navigate('/create')}
+            className="group relative overflow-hidden bg-surface-0 rounded-[2rem] border border-surface-200 p-8 text-left hover:border-brand-300 hover:shadow-lg transition-all duration-300 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">
+              <ShoppingBag size={28} className="text-brand-600" />
+            </div>
+            <h2 className="text-title-2 mb-2">Create Your Order</h2>
+            <p className="text-body-sm text-surface-500 mb-6 max-w-[200px]">
+              Start a new group order and invite people nearby.
+            </p>
+            <div className="inline-flex items-center gap-1.5 text-brand-600 font-semibold text-sm group-hover:translate-x-1 transition-transform">
+              Start creating <ArrowRight size={16} />
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/discover')}
+            className="group relative overflow-hidden bg-surface-900 rounded-[2rem] border border-surface-800 p-8 text-left hover:border-surface-700 hover:shadow-lg transition-all duration-300 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-surface-800 border border-surface-700 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
+              <Map size={28} className="text-white" />
+            </div>
+            <h2 className="text-title-2 text-white mb-2">Find Nearby Orders</h2>
+            <p className="text-sm text-surface-400 mb-6 leading-relaxed max-w-[200px]">
+              Discover and join active group orders near your location.
+            </p>
+            <div className="inline-flex items-center gap-1.5 text-white font-semibold text-sm group-hover:translate-x-1 transition-transform">
+              Browse orders <ArrowRight size={16} />
+            </div>
+          </button>
+        </section>
+      )}
+
+      {/* How PoolNear Works - Compact Vertical Layout */}
+      <section className="space-y-4">
+        <h3 className="text-label text-center">How It Works</h3>
+        <div className="card p-2">
+          <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-surface-100">
+            <div className="p-4 sm:p-6 text-center flex flex-col items-center">
+              <div className="w-10 h-10 rounded-full bg-surface-50 border border-surface-200 flex items-center justify-center mb-3">
+                <Search size={18} className="text-surface-700" />
+              </div>
+              <h4 className="text-sm font-bold text-surface-900 mb-1">1. Find or Create</h4>
+              <p className="text-xs text-surface-500">Discover a nearby pool or start your own.</p>
+            </div>
+            <div className="p-4 sm:p-6 text-center flex flex-col items-center">
+              <div className="w-10 h-10 rounded-full bg-surface-50 border border-surface-200 flex items-center justify-center mb-3">
+                <PackagePlus size={18} className="text-surface-700" />
+              </div>
+              <h4 className="text-sm font-bold text-surface-900 mb-1">2. Add Products</h4>
+              <p className="text-xs text-surface-500">List exactly what you want to order.</p>
+            </div>
+            <div className="p-4 sm:p-6 text-center flex flex-col items-center">
+              <div className="w-10 h-10 rounded-full bg-surface-50 border border-surface-200 flex items-center justify-center mb-3">
+                <Users size={18} className="text-surface-700" />
+              </div>
+              <h4 className="text-sm font-bold text-surface-900 mb-1">3. Group Together</h4>
+              <p className="text-xs text-surface-500">Meet store minimums as a community.</p>
+            </div>
+            <div className="p-4 sm:p-6 text-center flex flex-col items-center">
+              <div className="w-10 h-10 rounded-full bg-brand-50 border border-brand-200 flex items-center justify-center mb-3">
+                <CheckCircle2 size={18} className="text-brand-600" />
+              </div>
+              <h4 className="text-sm font-bold text-brand-700 mb-1">4. Order Placed</h4>
+              <p className="text-xs text-brand-600/80">Save on fees and pick up your items.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Geo Error Toast */}
+      {geoError && (
+        <div className="card bg-red-50 border-red-200 p-4 text-sm text-red-800 flex items-center gap-3">
+          <AlertTriangle size={18} className="text-red-500 shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold mb-0.5">Location Error</p>
+            <p className="text-red-600/90">{geoError}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

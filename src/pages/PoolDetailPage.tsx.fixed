@@ -1,9 +1,9 @@
-// ═
-// ═
-// ═
-// ═
+// ₹
+// PoolNear ₹ Pool Detail Page
+// Complete pool lifecycle: view, join, orderer, payment, delivery
+// ₹
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -15,7 +15,7 @@ import {
   updateMyPoolOrder, getMyRequirements, getPoolRequirements,
   type Pool, type PoolMember, type PoolOrder, type Requirement,
 } from '../services/pools';
-import { getSignedUrl } from '../services/uploads';
+import { uploadOrderProof, uploadPaymentProof, getSignedUrl } from '../services/uploads';
 import { supabase } from '../lib/supabase';
 import { PlatformBadge, StatusBadge, AmountProgress, Modal, LoadingState, ErrorState, Input } from '../components/ui';
 import { LocationInput } from '../components/LocationInput';
@@ -72,7 +72,9 @@ export function PoolDetailPage() {
   const [proofOrderId, setProofOrderId] = useState('');
   const [proofOrderValue, setProofOrderValue] = useState('');
   const [proofDeliveryTime, setProofDeliveryTime] = useState('');
-    
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+
   const [uploadProgress, setUploadProgress] = useState(0);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
@@ -89,7 +91,9 @@ export function PoolDetailPage() {
     }
   }, [showJoinModal, isEditMode, joinLocation, globalLocation]);
 
-    
+  const proofFileRef = useRef<HTMLInputElement>(null);
+  const paymentFileRef = useRef<HTMLInputElement>(null);
+
   const fetchAll = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -143,7 +147,7 @@ export function PoolDetailPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // — REALTIME SUBSCRIPTIONS —
+  // ₹ REALTIME SUBSCRIPTIONS ₹
   // Subscribe to pools, pool_members, and orders changes for this pool
   // so both users see live updates without manual refresh.
   useEffect(() => {
@@ -209,7 +213,7 @@ export function PoolDetailPage() {
     )
   );
 
-  // — ACTIONS —
+  // ₹ ACTIONS ₹
 
   const isFinalSlot = memberCount + 1 >= pool.max_members;
   const isFullPool = memberCount >= pool.max_members;
@@ -270,13 +274,13 @@ export function PoolDetailPage() {
         const oldContribution = myMembership?.contribution || 0;
         const newPoolTotal = (pool!.current_total || 0) - oldContribution + amount;
         if (newPoolTotal < (pool!.minimum_order_value || 0)) {
-          toast.error(`This edit would leave the full pool below the minimum order of —${pool!.minimum_order_value}.`);
+          toast.error(`This edit would leave the full pool below the minimum order of ₹${pool!.minimum_order_value}.`);
           return;
         }
       }
     } else {
       if (isFinalSlot && remainingRequired > 0 && amount < remainingRequired) {
-        toast.error(`Final available spot — minimum —${remainingRequired} needed to reach —${pool!.minimum_order_value} minimum order.`);
+        toast.error(`Final available spot ₹ minimum ₹${remainingRequired} needed to reach ₹${pool!.minimum_order_value} minimum order.`);
         return;
       }
     }
@@ -347,7 +351,11 @@ export function PoolDetailPage() {
     try {
       let proofImageUrl: string | undefined;
 
-      // Proof image upload disabled in UI
+      // Upload proof file if provided
+      if (proofFile && profile) {
+        const result = await uploadOrderProof(proofFile, profile.id, pool!.id, setUploadProgress);
+        proofImageUrl = result.url;
+      }
 
       await submitOrderProof(
         pool!.id, profile!.id, proofOrderId.trim(),
@@ -357,6 +365,7 @@ export function PoolDetailPage() {
       );
       toast.success('Order proof submitted!');
       setShowOrderProofModal(false);
+      setProofFile(null);
       setUploadProgress(0);
       fetchAll();
     } catch (err) {
@@ -371,10 +380,15 @@ export function PoolDetailPage() {
     try {
       let proofUrl: string | undefined;
 
-      // Payment proof image upload disabled in UI
+      // Upload payment proof if provided
+      if (paymentProofFile && profile) {
+        const result = await uploadPaymentProof(paymentProofFile, profile.id, pool!.id, setUploadProgress);
+        proofUrl = result.url;
+      }
 
       await markPaymentSent(pool!.id, profile!.id, proofUrl);
       toast.success('Payment marked as sent');
+      setPaymentProofFile(null);
       setUploadProgress(0);
       fetchAll();
     } catch (err) {
@@ -427,7 +441,7 @@ export function PoolDetailPage() {
     setActionLoading(true);
     try {
       await confirmReceipt(pool!.id, profile!.id);
-      toast.success('Receipt confirmed!');
+      toast.success('Receipt confirmed! ₹');
       fetchAll();
     } catch (err) {
       toast.error((err as Error).message);
@@ -545,15 +559,15 @@ export function PoolDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Order ID</span>
-                <p className="font-mono font-bold text-blue-900 mt-0.5">{order.external_order_id || '—'}</p>
+                <p className="font-mono font-bold text-blue-900 mt-0.5">{order.external_order_id || '₹'}</p>
               </div>
               <div>
                 <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total</span>
-                <p className="font-bold text-blue-900 mt-0.5">₹{order.order_value || '—'}</p>
+                <p className="font-bold text-blue-900 mt-0.5">₹{order.order_value || '₹'}</p>
               </div>
               <div className="col-span-2">
                 <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Delivery Time</span>
-                <p className="font-semibold text-blue-900 mt-0.5">{order.expected_delivery ? format(new Date(order.expected_delivery), 'dd MMM yyyy, hh:mm a') : '—'}</p>
+                <p className="font-semibold text-blue-900 mt-0.5">{order.expected_delivery ? format(new Date(order.expected_delivery), 'dd MMM yyyy, hh:mm a') : '₹'}</p>
               </div>
               {order.proof_image_url && (
                 <div className="col-span-2 pt-2">
@@ -572,7 +586,7 @@ export function PoolDetailPage() {
         {/* Completed Banner */}
         {status === 'completed' && (
           <div className="card p-6 border-emerald-200 bg-emerald-50 text-center space-y-2">
-            <div className="text-4xl mb-3">✅</div>
+            <div className="text-4xl mb-3">₹</div>
             <h3 className="text-title-2 text-emerald-900">Pool Completed!</h3>
             <p className="text-body-sm text-emerald-700 font-medium">All members have received their items.</p>
           </div>
@@ -610,21 +624,15 @@ export function PoolDetailPage() {
                           if (!connection) {
                             if (!hasValidPhone) {
                               return (
-                                <div className="mt-3 p-4 bg-red-50 border border-red-100 rounded-xl">
-                                  <p className="text-xs font-semibold text-red-800 mb-2">Connect to coordinate order</p>
-                                  <button onClick={() => setShowPhoneModal(true)} className="btn w-full bg-white border-red-200 text-red-600 hover:bg-red-50 py-2.5 text-sm shadow-sm">
-                                    Add Phone to Connect
-                                  </button>
-                                </div>
+                                <button onClick={() => setShowPhoneModal(true)} className="text-xs font-semibold text-red-600 hover:underline">
+                                  Add Phone to Connect
+                                </button>
                               );
                             }
                             return (
-                              <div className="mt-3 p-4 bg-surface-50 border border-surface-200 rounded-xl">
-                                <p className="text-xs font-semibold text-surface-600 mb-2">Connect to coordinate order</p>
-                                <button onClick={() => handleRequestConnection(member.user_id)} className="btn btn-secondary w-full py-2.5 text-sm shadow-sm">
-                                  Connect for Payment
-                                </button>
-                              </div>
+                              <button onClick={() => handleRequestConnection(member.user_id)} className="text-xs font-semibold text-brand-600 hover:underline">
+                                Connect for Payment
+                              </button>
                             );
                           }
                           
@@ -640,22 +648,15 @@ export function PoolDetailPage() {
                                 </div>
                               );
                             } else {
-                              return (
-                                <div className="mt-3 p-3 bg-surface-50 border border-surface-200 rounded-xl flex items-center justify-center">
-                                  <span className="text-sm font-semibold text-surface-500 flex items-center gap-2"><Clock size={16}/> Request Sent</span>
-                                </div>
-                              );
+                              return <span className="text-xs font-medium text-surface-500 flex items-center gap-1"><Clock size={12}/> Request Sent</span>;
                             }
                           }
                           
                           if (connection.status === 'accepted') {
                             return (
-                              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col gap-1 items-center">
-                                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide flex items-center gap-1"><CheckCircle2 size={14}/> Connected</span>
-                                <span className="text-sm font-mono font-bold text-emerald-900">
-                                  {connection.contact_phone || 'No phone'}
-                                </span>
-                              </div>
+                              <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200 inline-flex items-center gap-1 mt-1">
+                                <CheckCircle2 size={12}/> {connection.contact_phone || 'No phone'}
+                              </span>
                             );
                           }
                           
@@ -671,9 +672,9 @@ export function PoolDetailPage() {
                   {(status === 'delivered' || status === 'completed') && (
                     <div className="mt-1">
                       {member.receipt_status === 'received' ? (
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">✓ Received</span>
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">₹ Received</span>
                       ) : (
-                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Pending</span>
+                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">₹ Pending</span>
                       )}
                     </div>
                   )}
@@ -710,11 +711,11 @@ export function PoolDetailPage() {
                                 {req.product_description}
                               </p>
                               <p className="text-sm font-semibold text-brand-600 mt-0.5">
-                                {req.quantity} × ₹{req.amount / req.quantity}
+                                {req.quantity} ₹ ₹{req.amount / req.quantity}
                               </p>
                               {(req.brand || req.variant_size) && (
                                 <p className="text-xs font-medium text-surface-500 mt-1">
-                                  {[req.brand, req.variant_size].filter(Boolean).join(' • ')}
+                                  {[req.brand, req.variant_size].filter(Boolean).join(' ₹ ')}
                                 </p>
                               )}
                               {req.notes && (
@@ -730,7 +731,7 @@ export function PoolDetailPage() {
                                   rel="noopener noreferrer"
                                   className="text-xs font-semibold bg-surface-100 hover:bg-surface-200 text-surface-700 py-1.5 px-3 rounded-lg transition-colors inline-flex items-center gap-1"
                                 >
-                                  Link →
+                                  Link ₹
                                 </a>
                               )}
                             </div>
@@ -807,7 +808,7 @@ export function PoolDetailPage() {
                       </div>
                     ) : (
                       <button onClick={() => handleRequestConnection(pool.orderer_id!)} className="btn btn-primary w-full py-3">
-                        Connect for Payment
+                        Connect with orderer for payment
                       </button>
                     )}
                   </div>
@@ -833,6 +834,17 @@ export function PoolDetailPage() {
                       })()}
                     </div>
                     
+                    <div className="bg-surface-50 rounded-xl p-3 flex items-center justify-between border border-surface-200">
+                      <span className="text-xs font-bold text-surface-600 flex items-center gap-2">
+                        <Image size={16} className="text-surface-400" />
+                        {paymentProofFile ? paymentProofFile.name : 'Screenshot (optional)'}
+                      </span>
+                      <button onClick={() => paymentFileRef.current?.click()} className="text-xs font-bold text-brand-600 hover:underline">
+                        {paymentProofFile ? 'Change' : 'Attach'}
+                      </button>
+                      <input ref={paymentFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)} />
+                    </div>
+
                     <button onClick={handleMarkPaid} disabled={actionLoading} className="btn btn-primary w-full py-4 text-base">
                       <ShieldCheck size={20} /> I've Paid Successfully
                       {uploadProgress > 0 && uploadProgress < 100 && (
@@ -847,7 +859,7 @@ export function PoolDetailPage() {
         )}
       </div>
 
-      {/* — ACTION BUTTONS — */}
+      {/* ₹ ACTION BUTTONS ₹ */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-surface-50/90 backdrop-blur-md border-t border-surface-200 z-40">
         <div className="max-w-3xl mx-auto space-y-3">
           {/* Join */}
@@ -886,14 +898,14 @@ export function PoolDetailPage() {
           {/* Mark Delivered (orderer only) */}
           {isOrderer && status === 'order_placed' && (
             <button onClick={handleMarkDelivered} disabled={actionLoading} className="btn btn-primary w-full py-3 shadow-lg shadow-brand-500/20">
-              Mark as Delivered
+              ₹ Mark as Delivered
             </button>
           )}
 
           {/* Confirm Receipt (members) */}
           {isMember && status === 'delivered' && myMembership?.receipt_status !== 'received' && (
             <button onClick={handleConfirmReceipt} disabled={actionLoading} className="btn btn-primary w-full py-3 shadow-lg shadow-brand-500/20">
-              I've Received My Item
+              ₹ I've Received My Item
             </button>
           )}
 
@@ -910,7 +922,7 @@ export function PoolDetailPage() {
         </div>
       </div>
 
-      {/* — MODALS — */}
+      {/* ₹ MODALS ₹ */}
 
       {/* Join/Edit Modal */}
       <Modal isOpen={showJoinModal} onClose={() => { setShowJoinModal(false); setIsEditMode(false); }} title={isEditMode ? "Edit My Order" : "Add My Order"}>
@@ -1017,7 +1029,7 @@ export function PoolDetailPage() {
                       }}
                       className="w-10 h-full rounded-lg flex items-center justify-center text-surface-600 hover:bg-surface-100 transition-colors text-lg"
                     >
-                      ×
+                      ₹
                     </button>
                     <input
                       type="text"
@@ -1091,7 +1103,7 @@ export function PoolDetailPage() {
                 if (isFinalSlot) {
                   return (
                     <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 font-medium text-center">
-                      Final available spot — minimum ₹{remainingRequired} needed to reach ₹{pool.minimum_order_value}.
+                      Final available spot ₹ minimum ₹{remainingRequired} needed to reach ₹{pool.minimum_order_value}.
                     </div>
                   );
                 } else {
@@ -1195,7 +1207,37 @@ export function PoolDetailPage() {
             <label className="block text-sm font-bold text-surface-900 mb-1.5" htmlFor="proof-delivery">Expected Delivery Time</label>
             <input id="proof-delivery" type="datetime-local" value={proofDeliveryTime} onChange={(e) => setProofDeliveryTime(e.target.value)} className="input-field" />
           </div>
-          <button onClick={handleSubmitProof} disabled={actionLoading} className="btn btn-primary btn-lg w-full mt-6">
+          {/* File Upload */}
+          <div>
+            <label className="block text-sm font-bold text-surface-900 mb-1.5">Order Screenshot (optional)</label>
+            <button
+              onClick={() => proofFileRef.current?.click()}
+              className="w-full py-4 border-2 border-dashed border-surface-300 rounded-2xl text-sm font-semibold text-surface-600 hover:border-brand-400 hover:text-brand-600 transition-colors flex items-center justify-center gap-2 bg-surface-50"
+            >
+              <Image size={18} />
+              {proofFile ? proofFile.name : 'Choose file...'}
+            </button>
+            <input
+              ref={proofFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+            />
+            {proofFile && (
+              <p className="text-xs font-medium text-surface-400 mt-2 text-center">
+                {(proofFile.size / 1024).toFixed(0)} KB • {proofFile.type}
+              </p>
+            )}
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mt-3">
+                <div className="w-full bg-surface-200 rounded-full h-2 overflow-hidden">
+                  <div className="bg-brand-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+          <button onClick={handleSubmitProof} disabled={actionLoading} className="btn btn-primary btn-lg w-full mt-2">
             {actionLoading ? 'Submitting...' : 'Submit Proof'}
           </button>
         </div>

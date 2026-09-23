@@ -1,7 +1,7 @@
-// ═
-// ═
-// ═
-// ═
+// ₹
+// PoolNear ₹ Discover Page (Pools Near You)
+// Full pool discovery with filters
+// ₹
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -211,7 +211,7 @@ export function DiscoverPage() {
           )}
           {radiusFilter !== 500 && (
             <span className="chip active text-xs">
-              📍 {RADIUS_OPTIONS.find((r) => r.value === radiusFilter)?.label}
+              ₹ {RADIUS_OPTIONS.find((r) => r.value === radiusFilter)?.label}
               <button onClick={() => setRadiusFilter(500)} className="ml-1 hover:text-red-500">
                 <X size={12} />
               </button>

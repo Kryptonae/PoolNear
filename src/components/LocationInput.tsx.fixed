@@ -98,7 +98,7 @@ export function LocationInput({
       try {
         const result = await reverseGeocode(coords.latitude, coords.longitude);
         const loc = {
-          destination: result?.display_name || 'Location found — address unavailable',
+          destination: result?.display_name || 'Location found ₹ address unavailable',
           latitude: coords.latitude,
           longitude: coords.longitude,
         };
@@ -112,7 +112,7 @@ export function LocationInput({
       } catch (err: any) {
         // GPS succeeded, but reverse geocoding failed. Do not discard coordinates.
         const loc = {
-          destination: 'Location found — address unavailable',
+          destination: 'Location found ₹ address unavailable',
           latitude: coords.latitude,
           longitude: coords.longitude,
         };
@@ -170,14 +170,14 @@ export function LocationInput({
         try {
           const result = await reverseGeocode(lat, lng);
           const resolvedLoc = {
-            destination: result?.display_name || 'Location found — address unavailable',
+            destination: result?.display_name || 'Location found ₹ address unavailable',
             latitude: lat,
             longitude: lng
           };
           setSelectedLocation(resolvedLoc);
           onLocationSelect(resolvedLoc);
         } catch (err) {
-          const errorLoc = { destination: 'Location found — address unavailable', latitude: lat, longitude: lng };
+          const errorLoc = { destination: 'Location found ₹ address unavailable', latitude: lat, longitude: lng };
           setSelectedLocation(errorLoc);
           onLocationSelect(errorLoc);
         } finally {

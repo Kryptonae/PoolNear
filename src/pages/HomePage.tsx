@@ -1,61 +1,30 @@
-// ═══════════════════════════════════════════════════════════════════
 // PoolNear — Home Page
-// Location permission and main Create/Discover CTA
-// ═══════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { getNotifications } from '../services/pools';
 import { LocationPermissionCard } from '../components/ui';
-import { RADIUS_OPTIONS } from '../lib/constants';
-import { MapPin, Bell, ChevronDown, ShoppingBag, Map, Search, PackagePlus, Users, CheckCircle2, Check, ArrowRight } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { ShoppingBag, Map, Search, PackagePlus, Users, CheckCircle2, ArrowRight, ShieldCheck, Check } from 'lucide-react';
 
 export function HomePage() {
-  const { profile, updateProfile } = useAuth();
-  const { coordinates, loading: geoLoading, error: geoError, permissionState, requestLocation } = useGeolocation();
+  const { profile } = useAuth();
+  const { coordinates, loading: geoLoading, permissionState, requestLocation } = useGeolocation();
   const navigate = useNavigate();
 
-  const [showRadiusMenu, setShowRadiusMenu] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const radius = profile?.preferred_radius || 500;
   const hasLocation = coordinates !== null || (profile?.latitude && profile?.longitude);
-
-  const fetchNotifications = useCallback(async () => {
-    if (!profile?.id) return;
-    try {
-      const notifs = await getNotifications(profile.id);
-      setUnreadCount(notifs.filter((n: Record<string, unknown>) => !n.read).length);
-    } catch {
-      // Silent fail for notifications count
-    }
-  }, [profile?.id]);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
 
   // Try to get location on mount if previously granted
   useEffect(() => {
     if (profile?.location_permission && !coordinates) {
       requestLocation();
     }
-  }, [profile?.location_permission]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleRadiusChange(newRadius: number) {
-    setShowRadiusMenu(false);
-    await updateProfile({ preferred_radius: newRadius });
-    toast.success(`Radius updated to ${newRadius >= 1000 ? `${newRadius / 1000} km` : `${newRadius} m`}`);
-  }
-
-  const radiusLabel = radius >= 1000 ? `${radius / 1000} km` : `${radius} m`;
+  }, [profile?.location_permission, coordinates, requestLocation]);
 
   return (
-    <div className="px-4 py-6 max-w-4xl mx-auto space-y-8 animate-fade-in">
-      {/* Location Permission */}
+    <div className="animate-fade-in pb-12 space-y-8 max-w-3xl mx-auto pt-2 lg:pt-6">
+      
+      {/* Location Permission - Only show if not granted */}
       {!hasLocation && (
         <LocationPermissionCard
           onAllow={requestLocation}
@@ -65,197 +34,127 @@ export function HomePage() {
         />
       )}
 
-      {/* Location & Radius Header */}
-      {hasLocation && (
-        <div className="bg-white rounded-2xl border border-surface-200 p-4 shadow-sm animate-slide-up">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
-                <MapPin size={20} className="text-brand-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-surface-900">
-                  📍 {profile?.area || 'Your Location'}
-                </p>
-                <p className="text-xs text-surface-500">
-                  Matching radius: <span className="font-semibold text-brand-600">{radiusLabel}</span>
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Notification Bell */}
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="relative w-9 h-9 rounded-xl bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 transition-colors"
-                aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
-              >
-                <Bell size={18} />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-              {/* Radius Menu */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowRadiusMenu(!showRadiusMenu)}
-                  className="px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 rounded-lg hover:bg-brand-100 transition-colors flex items-center gap-1"
-                >
-                  Change <ChevronDown size={14} />
-                </button>
-                {showRadiusMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowRadiusMenu(false)} />
-                    <div className="absolute right-0 top-full mt-2 bg-white border border-surface-200 rounded-xl shadow-lg z-50 py-1 w-36 animate-scale-in">
-                      {RADIUS_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => handleRadiusChange(opt.value)}
-                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-50 transition-colors ${
-                            opt.value === radius ? 'text-brand-600 font-semibold bg-brand-50/50' : 'text-surface-700'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Hero Section */}
-      <section className="text-center py-6 md:py-10 space-y-4">
-        <h1 className="text-3xl md:text-5xl font-extrabold text-surface-900 tracking-tight">
-          Group your order.<br className="hidden md:block" /> Save more. Order together.
+      <section className="text-center px-4 pt-4 pb-2">
+        <h1 className="text-title-1 mb-3 text-surface-900 tracking-tight">
+          Order together.<br className="md:hidden" /> Save together.
         </h1>
-        <p className="text-surface-600 text-base md:text-lg max-w-xl mx-auto">
-          Create a group order or find people nearby who are already ordering.
+        <p className="text-body text-surface-500 max-w-lg mx-auto leading-relaxed">
+          Create a group order or find nearby people ordering the same way to save on delivery fees and meet store minimums.
         </p>
       </section>
 
-      {/* Two Primary Actions */}
-      {hasLocation && (
-        <section className="grid md:grid-cols-2 gap-4">
-          <button
-            onClick={() => navigate('/create')}
-            className="group relative overflow-hidden bg-white rounded-3xl border border-surface-200 p-6 md:p-8 text-left hover:border-brand-300 hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 active:scale-[0.98]"
-          >
-            <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-x-4 group-hover:translate-x-0 text-brand-500">
-              <ArrowRight size={24} />
+      {/* Primary Actions */}
+      <section className="px-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Create Order - Primary Action */}
+        <button
+          onClick={() => navigate('/create')}
+          className="group relative overflow-hidden bg-brand-500 rounded-2xl border border-brand-400 p-6 text-left hover:bg-brand-600 transition-all duration-300 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 shadow-xl shadow-brand-500/10 flex flex-col h-full"
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <ShoppingBag size={24} className="text-white" />
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-              <ShoppingBag size={28} className="text-brand-600" />
-            </div>
-            <h2 className="text-xl md:text-2xl font-bold text-surface-900 mb-2">Create Your Order</h2>
-            <p className="text-surface-500 text-sm md:text-base leading-relaxed">
-              Start a group order and invite people nearby.
-            </p>
-          </button>
-
-          <button
-            onClick={() => navigate('/discover')}
-            className="group relative overflow-hidden bg-surface-900 rounded-3xl border border-surface-800 p-6 md:p-8 text-left hover:border-surface-700 hover:shadow-xl hover:shadow-surface-900/20 transition-all duration-300 active:scale-[0.98]"
-          >
-            <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-x-4 group-hover:translate-x-0 text-surface-400">
-              <ArrowRight size={24} />
-            </div>
-            <div className="w-14 h-14 rounded-2xl bg-surface-800 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-              <Map size={28} className="text-white" />
-            </div>
-            <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Find Nearby Orders</h2>
-            <p className="text-surface-400 text-sm md:text-base leading-relaxed">
-              Discover active group orders near your location.
-            </p>
-          </button>
-        </section>
-      )}
-
-      {/* How PoolNear Works - Poster Section */}
-      <section className="bg-surface-50 rounded-3xl p-6 md:p-8 mt-4 border border-surface-100">
-        <h3 className="text-lg font-bold text-surface-900 mb-8 text-center">How PoolNear Works</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-4 relative">
-          {/* Connecting line for desktop */}
-          <div className="hidden md:block absolute top-6 left-[10%] right-[10%] h-0.5 bg-surface-200 -z-0" />
-          
-          <div className="relative z-10 flex flex-col items-center text-center group">
-            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
-              <Search size={20} />
-            </div>
-            <h4 className="font-semibold text-surface-900 mb-1">Create / Find</h4>
-            <p className="text-xs text-surface-500">Start or join an order</p>
           </div>
-          
-          <div className="relative z-10 flex flex-col items-center text-center group">
-            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
-              <PackagePlus size={20} />
-            </div>
-            <h4 className="font-semibold text-surface-900 mb-1">Add products</h4>
-            <p className="text-xs text-surface-500">List what you need</p>
+          <h2 className="text-lg font-bold text-white mb-1.5">Create Your Order</h2>
+          <p className="text-sm text-brand-50 font-medium opacity-90 flex-1">
+            Start a new group order and invite people nearby.
+          </p>
+          <div className="mt-6 flex items-center justify-between text-white font-bold text-sm group-hover:translate-x-1 transition-transform">
+            <span>Start</span>
+            <ArrowRight size={18} />
           </div>
-          
-          <div className="relative z-10 flex flex-col items-center text-center group">
-            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
-              <Users size={20} />
-            </div>
-            <h4 className="font-semibold text-surface-900 mb-1">Join together</h4>
-            <p className="text-xs text-surface-500">Meet minimums together</p>
-          </div>
+        </button>
 
-          <div className="relative z-10 flex flex-col items-center text-center group">
-            <div className="w-12 h-12 rounded-full bg-white border-2 border-surface-200 flex items-center justify-center mb-3 shadow-sm group-hover:border-brand-300 group-hover:text-brand-600 transition-colors">
-              <CheckCircle2 size={20} />
+        {/* View Nearby Orders - Secondary Action */}
+        <button
+          onClick={() => navigate('/discover')}
+          className="group relative overflow-hidden bg-surface-0 rounded-2xl border-2 border-surface-200 p-6 text-left hover:border-surface-300 hover:bg-surface-50 transition-all duration-300 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 shadow-sm flex flex-col h-full"
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-surface-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Map size={24} className="text-surface-700" />
             </div>
-            <h4 className="font-semibold text-surface-900 mb-1">Complete order</h4>
-            <p className="text-xs text-surface-500">Place order & receive</p>
+          </div>
+          <h2 className="text-lg font-bold text-surface-900 mb-1.5">View Nearby Orders</h2>
+          <p className="text-sm text-surface-500 font-medium flex-1">
+            See active orders near you and join one easily.
+          </p>
+          <div className="mt-6 flex items-center justify-between text-surface-900 font-bold text-sm group-hover:translate-x-1 transition-transform">
+            <span>View</span>
+            <ArrowRight size={18} />
+          </div>
+        </button>
+      </section>
+
+      {/* How PoolNear Works */}
+      <section className="px-4 pt-6">
+        <h3 className="text-sm font-bold text-surface-900 uppercase tracking-wider mb-4 px-2">How It Works</h3>
+        <div className="card divide-y divide-surface-100">
+          <div className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center shrink-0">
+              <Search size={18} className="text-surface-700" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-surface-900">1. Find or Create</h4>
+              <p className="text-xs text-surface-500 mt-0.5">Discover a nearby pool or start your own.</p>
+            </div>
+          </div>
+          <div className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center shrink-0">
+              <PackagePlus size={18} className="text-surface-700" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-surface-900">2. Add Products</h4>
+              <p className="text-xs text-surface-500 mt-0.5">List exactly what you want to order.</p>
+            </div>
+          </div>
+          <div className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center shrink-0">
+              <Users size={18} className="text-surface-700" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-surface-900">3. Group Together</h4>
+              <p className="text-xs text-surface-500 mt-0.5">Meet store minimums as a community.</p>
+            </div>
+          </div>
+          <div className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center shrink-0">
+              <CheckCircle2 size={18} className="text-brand-600" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-surface-900">4. Order Placed</h4>
+              <p className="text-xs text-surface-500 mt-0.5">Save on fees and pick up your items.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Why PoolNear - Trust Section */}
-      <section className="pt-2 pb-6">
-        <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider text-center mb-6">
-          Why PoolNear?
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-4 md:px-0">
-          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Check size={16} className="text-emerald-600" />
-            </div>
-            <span className="text-sm font-medium text-surface-700">Clear order details</span>
+      {/* Trust / Value Section */}
+      <section className="px-4 pt-2">
+        <div className="card p-5 bg-surface-50 border border-surface-200">
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldCheck size={20} className="text-surface-700" />
+            <h3 className="text-sm font-bold text-surface-900">Why PoolNear?</h3>
           </div>
-          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Check size={16} className="text-emerald-600" />
-            </div>
-            <span className="text-sm font-medium text-surface-700">Location-aware discovery</span>
-          </div>
-          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Check size={16} className="text-emerald-600" />
-            </div>
-            <span className="text-sm font-medium text-surface-700">Simple group ordering</span>
-          </div>
-          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-surface-100 shadow-sm">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Check size={16} className="text-emerald-600" />
-            </div>
-            <span className="text-sm font-medium text-surface-700">Transparent participation</span>
-          </div>
+          <ul className="space-y-2.5">
+            {[
+              'Clear order details',
+              'Nearby order discovery',
+              'Simple group ordering',
+              'Individual receiving locations'
+            ].map((item, idx) => (
+              <li key={idx} className="flex items-start gap-2.5">
+                <div className="mt-0.5 w-4 h-4 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                  <Check size={10} className="text-brand-600" />
+                </div>
+                <span className="text-sm text-surface-700 font-medium">{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
-
-      {/* Geo Error Toast */}
-      {geoError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 animate-slide-up">
-          <p className="font-medium mb-1">Location Error</p>
-          <p className="text-amber-600">{geoError}</p>
-        </div>
-      )}
+      
     </div>
   );
 }

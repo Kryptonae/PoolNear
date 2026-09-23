@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ShieldCheck, AlertCircle } from 'lucide-react';
-import { Modal } from './ui';
+import { Modal, Input } from './ui';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -63,39 +63,36 @@ export function PhoneNumberModal({ isOpen, onClose, onSaved }: PhoneNumberModalP
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Add Phone Number">
       <div className="space-y-4 mt-3">
-        <div className="flex items-center gap-3 p-3 bg-brand-50 rounded-xl">
-          <ShieldCheck size={20} className="text-brand-600 flex-shrink-0" />
-          <p className="text-sm text-brand-700">
+        <div className="flex items-center gap-3 p-4 bg-brand-50/50 rounded-2xl border border-brand-100/50">
+          <ShieldCheck size={24} className="text-brand-600 shrink-0" />
+          <p className="text-sm font-medium text-brand-800 leading-relaxed">
             A valid phone number is required to request connections with other users.
           </p>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-surface-700 mb-1.5" htmlFor="phone-input">
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-surface-700" htmlFor="phone-input">
             Phone Number
           </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-surface-500 text-sm font-medium">+91</span>
-            </div>
-            <input
-              id="phone-input"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="9876543210"
-              className="w-full pl-12 pr-4 py-3 bg-surface-50 border border-surface-200 rounded-xl text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all font-medium"
-              autoFocus
-            />
-          </div>
-          <p className="text-xs text-surface-500 mt-2">
-            Enter your 10-digit mobile number.
+          <Input
+            id="phone-input"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="9876543210"
+            className="font-medium"
+            autoFocus
+            prefixNode={<span className="text-surface-500 text-base font-bold">+91</span>}
+            prefixWidth="w-14"
+          />
+          <p className="text-[10px] font-bold text-surface-400 uppercase tracking-wide mt-2">
+            Enter your 10-digit mobile number
           </p>
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm flex items-start gap-2">
-            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-medium flex items-start gap-2 border border-red-100">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
             <p>{error}</p>
           </div>
         )}
@@ -103,7 +100,7 @@ export function PhoneNumberModal({ isOpen, onClose, onSaved }: PhoneNumberModalP
         <button
           onClick={handleSubmit}
           disabled={loading || !phone}
-          className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+          className="btn btn-primary w-full mt-2 shadow-lg shadow-brand-500/20"
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
